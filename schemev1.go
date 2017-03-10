@@ -209,6 +209,9 @@ func (p *schemeV1) verify(apk *binxml.ZipReader) error {
 	validSignatures := map[string]*schemeV1Signature{}
 	for sigName, sig := range p.sigs {
 		sig.chain, err = p.verifySignature(sig)
+		if sig.chain != nil {
+			p.chain = append(p.chain, sig.chain)
+		}
 		if err != nil {
 			continue
 		}
@@ -323,7 +326,7 @@ func (p *schemeV1) verifyMainManifest(apk *binxml.ZipReader) error {
 		}
 	}
 
-	var apkCertChains [][]*x509.Certificate
+	chainsSet := false
 	for _, path := range required {
 		attrs, prs := p.manifest.entries[path]
 		if !prs {
@@ -350,14 +353,13 @@ func (p *schemeV1) verifyMainManifest(apk *binxml.ZipReader) error {
 			return fmt.Errorf("File '%s' is not in any signature manifests", path)
 		}
 
-		if apkCertChains == nil {
-			apkCertChains = certChains
-		} else if !p.certChainsMatch(apkCertChains, certChains) {
+		if !chainsSet {
+			p.chain = certChains
+			chainsSet = true
+		} else if !p.certChainsMatch(p.chain, certChains) {
 			return fmt.Errorf("Mismatched certificates at entry '%s'", path)
 		}
 	}
-
-	p.chain = apkCertChains
 	return nil
 }
 
@@ -480,8 +482,10 @@ func (p *schemeV1) verifySignature(sig *schemeV1Signature) ([]*x509.Certificate,
 	}
 
 	signerCert := sig.cert.Certificates[signerCertIndex]
+	chain := []*x509.Certificate{signerCert}
+
 	if len(signerCert.UnhandledCriticalExtensions) != 0 {
-		return nil, errors.New("Certificate has unhandled critical extensions.")
+		return chain, errors.New("Certificate has unhandled critical extensions.")
 	}
 
 	da := info.DigestAlgorithm.Algorithm.String()
@@ -493,10 +497,8 @@ func (p *schemeV1) verifySignature(sig *schemeV1Signature) ([]*x509.Certificate,
 
 	err := p.checkSignature(signerCert, algo, sig.signatureManifest.rawData, info.EncryptedDigest)
 	if err != nil {
-		return nil, err
+		return chain, err
 	}
-
-	chain := []*x509.Certificate{signerCert}
 
 	// load cert chain if not self-signed
 	if p.pkixCanonical(&signerCert.Issuer) == p.pkixCanonical(&signerCert.Subject) {

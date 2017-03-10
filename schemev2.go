@@ -122,12 +122,7 @@ func verifySchemeV2(path string) ([][]*x509.Certificate, error) {
 		return nil, &schemeV2NotFoundError{err}
 	}
 
-	certChain, err := s.verify()
-	if err != nil {
-		return nil, err
-	}
-
-	return certChain, nil
+	return s.verify()
 }
 
 func (s *schemeV2) findEocd() error {
@@ -332,12 +327,12 @@ func (s *schemeV2) verify() ([][]*x509.Certificate, error) {
 
 		signer, err := s.getLenghtPrefixedSlice(signers)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to parse/verify signer #%d block: %s", signerCount, err.Error())
+			return signerCerts, fmt.Errorf("Failed to parse/verify signer #%d block: %s", signerCount, err.Error())
 		}
 
 		certs, err := s.verifySigner(signer, contentDigests)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to parse/verify signer #%d block: %s", signerCount, err.Error())
+			return signerCerts, fmt.Errorf("Failed to parse/verify signer #%d block: %s", signerCount, err.Error())
 		}
 
 		signerCerts = append(signerCerts, certs)
@@ -348,11 +343,11 @@ func (s *schemeV2) verify() ([][]*x509.Certificate, error) {
 	}
 
 	if len(contentDigests) == 0 {
-		return nil, errors.New("No content digests found.")
+		return signerCerts, errors.New("No content digests found.")
 	}
 
 	if err := s.verifyIntegrity(contentDigests); err != nil {
-		return nil, fmt.Errorf("Failed to verify integrity: %s", err.Error())
+		return signerCerts, fmt.Errorf("Failed to verify integrity: %s", err.Error())
 	}
 
 	return signerCerts, nil
