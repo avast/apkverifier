@@ -207,14 +207,16 @@ func (p *schemeV1) prepForVerification() error {
 func (p *schemeV1) verify(apk *binxml.ZipReader) error {
 	var err error
 	validSignatures := map[string]*schemeV1Signature{}
+	var lastChain []*x509.Certificate
 	for sigName, sig := range p.sigs {
 		sig.chain, err = p.verifySignature(sig)
-		if sig.chain != nil {
-			p.chain = append(p.chain, sig.chain)
-		}
 		if err != nil {
+			lastChain = sig.chain
 			continue
 		}
+
+		lastChain = nil
+		p.chain = append(p.chain, sig.chain)
 
 		sm := sig.signatureManifest
 		if idList, prs := sm.main[attrAndroidApkSigned]; prs {
@@ -303,12 +305,14 @@ func (p *schemeV1) verify(apk *binxml.ZipReader) error {
 
 	p.sigs = validSignatures
 
-	manErr := p.verifyMainManifest(apk)
-
 	if len(validSignatures) == 0 {
+		if lastChain != nil {
+			p.chain = append(p.chain, lastChain)
+		}
 		return fmt.Errorf("No valid cert chains found, last error: %v", err)
 	}
-	return manErr
+
+	return p.verifyMainManifest(apk)
 }
 
 func (p *schemeV1) verifyMainManifest(apk *binxml.ZipReader) error {
