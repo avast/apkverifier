@@ -4,6 +4,7 @@ import (
 	"binxml"
 	"bytes"
 	"crypto"
+	"crypto/dsa"
 	"crypto/md5"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -20,6 +21,7 @@ import (
 	"hash"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -63,7 +65,8 @@ var oidToAlgo = map[string]x509.SignatureAlgorithm{
 	" 1.2.840.10040.4.3":              x509.DSAWithSHA1,
 	"1.3.14.3.2.26 1.2.840.10040.4.3": x509.DSAWithSHA1,
 
-	"2.16.840.1.101.3.4.2.1 1.2.840.10040.4.1": x509.DSAWithSHA256,
+	"2.16.840.1.101.3.4.2.1 1.2.840.10040.4.1":      x509.DSAWithSHA256,
+	"2.16.840.1.101.3.4.2.1 2.16.840.1.101.3.4.3.2": x509.DSAWithSHA256,
 
 	"2.16.840.1.101.3.4.2.1 1.2.840.10045.2.1": x509.ECDSAWithSHA256,
 	"2.16.840.1.101.3.4.2.2 1.2.840.10045.2.1": x509.ECDSAWithSHA384,
@@ -537,17 +540,44 @@ func (p *schemeV1) verifySignature(sig *schemeV1Signature) ([]*x509.Certificate,
 	return chain, nil
 }
 
+type dsaSignature struct {
+	R, S *big.Int
+}
+
 func (p *schemeV1) checkSignature(cert *x509.Certificate, algo x509.SignatureAlgorithm, signed, signature []byte) error {
-	if algo != x509.MD5WithRSA {
+	switch algo {
+	case x509.MD5WithRSA:
+		digest := md5.Sum(signed)
+		pub, ok := cert.PublicKey.(*rsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("Unexpected public key type (%t)!", pub)
+		}
+		return rsa.VerifyPKCS1v15(pub, crypto.MD5, digest[:], signature)
+	case x509.DSAWithSHA256:
+		hash := sha256.Sum256(signed)
+		pub := cert.PublicKey.(*dsa.PublicKey)
+		reqLen := pub.Q.BitLen() / 8
+		if reqLen > len(hash) {
+			return fmt.Errorf("Digest algorithm is too short for given DSA parameters.")
+		}
+		digest := hash[:reqLen]
+
+		dsaSig := new(dsaSignature)
+		if rest, err := asn1.Unmarshal(signature, dsaSig); err != nil {
+			return err
+		} else if len(rest) != 0 {
+			return errors.New("x509: trailing data after DSA signature")
+		}
+		if dsaSig.R.Sign() <= 0 || dsaSig.S.Sign() <= 0 {
+			return errors.New("x509: DSA signature contained zero or negative values")
+		}
+		if !dsa.Verify(pub, digest, dsaSig.R, dsaSig.S) {
+			return errors.New("x509: DSA verification failure")
+		}
+		return nil
+	default:
 		return cert.CheckSignature(algo, signed, signature)
 	}
-
-	digest := md5.Sum(signed)
-	pub, ok := cert.PublicKey.(*rsa.PublicKey)
-	if !ok {
-		return fmt.Errorf("Unexpected public key type (%t)!", pub)
-	}
-	return rsa.VerifyPKCS1v15(pub, crypto.MD5, digest[:], signature)
 }
 
 type byX501Canonical []pkix.AttributeTypeAndValue
