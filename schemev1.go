@@ -550,7 +550,7 @@ func (p *schemeV1) checkSignature(cert *x509.Certificate, algo x509.SignatureAlg
 		digest := md5.Sum(signed)
 		pub, ok := cert.PublicKey.(*rsa.PublicKey)
 		if !ok {
-			return fmt.Errorf("Unexpected public key type (%t)!", pub)
+			return fmt.Errorf("Unexpected public key type (%T)!", cert.PublicKey)
 		}
 		return rsa.VerifyPKCS1v15(pub, crypto.MD5, digest[:], signature)
 	case x509.DSAWithSHA256:
