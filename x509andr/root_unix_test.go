@@ -4,7 +4,7 @@
 
 // +build dragonfly freebsd linux netbsd openbsd solaris
 
-package x509
+package x509andr
 
 import (
 	"fmt"

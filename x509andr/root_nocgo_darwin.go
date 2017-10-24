@@ -4,7 +4,7 @@
 
 // +build !cgo
 
-package x509
+package x509andr
 
 func loadSystemRoots() (*CertPool, error) {
 	return execSecurityRoots()

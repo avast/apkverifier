@@ -182,7 +182,7 @@ const header = `
 // +build darwin
 // +build arm arm64
 
-package x509
+package x509andr
 
 func loadSystemRoots() (*CertPool, error) {
 	p := NewCertPool()

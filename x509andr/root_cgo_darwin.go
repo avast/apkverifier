@@ -4,7 +4,7 @@
 
 // +build cgo,!arm,!arm64,!ios
 
-package x509
+package x509andr
 
 /*
 #cgo CFLAGS: -mmacosx-version-min=10.6 -D__MAC_OS_X_VERSION_MAX_ALLOWED=1080

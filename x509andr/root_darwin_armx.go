@@ -8,7 +8,7 @@
 // +build darwin
 // +build arm arm64 ios
 
-package x509
+package x509andr
 
 func loadSystemRoots() (*CertPool, error) {
 	p := NewCertPool()

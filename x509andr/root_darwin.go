@@ -4,7 +4,7 @@
 
 //go:generate go run root_darwin_arm_gen.go -output root_darwin_armx.go
 
-package x509
+package x509andr
 
 import (
 	"bufio"

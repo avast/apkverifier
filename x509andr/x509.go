@@ -7,7 +7,7 @@
 // On UNIX systems the environment variables SSL_CERT_FILE and SSL_CERT_DIR
 // can be used to override the system default locations for the SSL certificate
 // file and SSL certificate files directory, respectively.
-package x509
+package x509andr
 
 import (
 	"bytes"

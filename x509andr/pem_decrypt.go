@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package x509
+package x509andr
 
 // RFC 1423 describes the encryption of PEM blocks. The algorithm used to
 // generate a key from the password was derived by looking at the OpenSSL

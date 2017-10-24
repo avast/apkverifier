@@ -4,7 +4,7 @@
 
 // +build plan9
 
-package x509
+package x509andr
 
 import (
 	"io/ioutil"
