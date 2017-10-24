@@ -945,11 +945,14 @@ func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{
 	asn1Data := keyData.PublicKey.RightAlign()
 	switch algo {
 	case RSA:
+		// CHADRON: Android does not care, ignore.
+		// Sample: fcfbe912bc70e9c996c82cc25194908055734f7db4e81fd948fb7deb8bc7450f
+		//
 		// RSA public keys must have a NULL in the parameters
 		// (https://tools.ietf.org/html/rfc3279#section-2.3.1).
-		if !bytes.Equal(keyData.Algorithm.Parameters.FullBytes, asn1.NullBytes) {
-			return nil, errors.New("x509: RSA key missing NULL parameters")
-		}
+		//if !bytes.Equal(keyData.Algorithm.Parameters.FullBytes, asn1.NullBytes) {
+		//	return nil, errors.New("x509: RSA key missing NULL parameters")
+		//}
 
 		p := new(pkcs1PublicKey)
 		rest, err := asn1.Unmarshal(asn1Data, p)
