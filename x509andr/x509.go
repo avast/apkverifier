@@ -31,6 +31,13 @@ import (
 	"time"
 )
 
+const tagNull = 5
+
+var (
+	nullBytes    = []byte{tagNull, 0}
+	nullRawValue = asn1.RawValue{Tag: tagNull}
+)
+
 // pkixPublicKey reflects a PKIX public key structure. See SubjectPublicKeyInfo
 // in RFC 3280.
 type pkixPublicKey struct {
@@ -73,7 +80,7 @@ func marshalPublicKey(pub interface{}) (publicKeyBytes []byte, publicKeyAlgorith
 		publicKeyAlgorithm.Algorithm = oidPublicKeyRSA
 		// This is a NULL parameters value which is required by
 		// https://tools.ietf.org/html/rfc3279#section-2.3.1.
-		publicKeyAlgorithm.Parameters = asn1.NullRawValue
+		publicKeyAlgorithm.Parameters = nullRawValue
 	case *ecdsa.PublicKey:
 		publicKeyBytes = elliptic.Marshal(pub.Curve, pub.X, pub.Y)
 		oid, ok := oidFromNamedCurve(pub.Curve)
@@ -358,7 +365,7 @@ func rsaPSSParameters(hashFunc crypto.Hash) asn1.RawValue {
 	params := pssParameters{
 		Hash: pkix.AlgorithmIdentifier{
 			Algorithm:  hashOID,
-			Parameters: asn1.NullRawValue,
+			Parameters: nullRawValue,
 		},
 		MGF: pkix.AlgorithmIdentifier{
 			Algorithm: oidMGF1,
@@ -369,7 +376,7 @@ func rsaPSSParameters(hashFunc crypto.Hash) asn1.RawValue {
 
 	mgf1Params := pkix.AlgorithmIdentifier{
 		Algorithm:  hashOID,
-		Parameters: asn1.NullRawValue,
+		Parameters: nullRawValue,
 	}
 
 	var err error
@@ -416,10 +423,10 @@ func getSignatureAlgorithmFromAI(ai pkix.AlgorithmIdentifier) SignatureAlgorithm
 	// https://tools.ietf.org/html/rfc3447#section-8.1), that the
 	// salt length matches the hash length, and that the trailer
 	// field has the default value.
-	if !bytes.Equal(params.Hash.Parameters.FullBytes, asn1.NullBytes) ||
+	if !bytes.Equal(params.Hash.Parameters.FullBytes, nullBytes) ||
 		!params.MGF.Algorithm.Equal(oidMGF1) ||
 		!mgf1HashFunc.Algorithm.Equal(params.Hash.Algorithm) ||
-		!bytes.Equal(mgf1HashFunc.Parameters.FullBytes, asn1.NullBytes) ||
+		!bytes.Equal(mgf1HashFunc.Parameters.FullBytes, nullBytes) ||
 		params.TrailerField != 1 {
 		return UnknownSignatureAlgorithm
 	}
@@ -950,7 +957,7 @@ func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{
 		//
 		// RSA public keys must have a NULL in the parameters
 		// (https://tools.ietf.org/html/rfc3279#section-2.3.1).
-		//if !bytes.Equal(keyData.Algorithm.Parameters.FullBytes, asn1.NullBytes) {
+		//if !bytes.Equal(keyData.Algorithm.Parameters.FullBytes, nullBytes) {
 		//	return nil, errors.New("x509: RSA key missing NULL parameters")
 		//}
 
@@ -1677,7 +1684,7 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo SignatureAlgori
 		pubType = RSA
 		hashFunc = crypto.SHA256
 		sigAlgo.Algorithm = oidSignatureSHA256WithRSA
-		sigAlgo.Parameters = asn1.NullRawValue
+		sigAlgo.Parameters = nullRawValue
 
 	case *ecdsa.PublicKey:
 		pubType = ECDSA
