@@ -27,7 +27,7 @@ func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err erro
 	}
 
 	if optionalZip == nil {
-		optionalZip, err := apkparser.OpenZip(path)
+		optionalZip, err = apkparser.OpenZip(path)
 		if err != nil {
 			return Result{}, err
 		}
