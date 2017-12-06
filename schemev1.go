@@ -1,7 +1,6 @@
 package apkverifier
 
 import (
-	"github.com/avast/apkparser"
 	"bytes"
 	"crypto"
 	"crypto/dsa"
@@ -16,7 +15,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/fullsailor/pkcs7"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -25,6 +23,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/avast/apkparser"
+	"github.com/fullsailor/pkcs7"
 )
 
 // These two arrays are synchronized
