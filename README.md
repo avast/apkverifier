@@ -24,8 +24,8 @@ The last two have some changes to handle some not-entirely-according-to-spec cer
 package main
 
 import (
-	"github.com/avast/apkverifier"
 	"fmt"
+	"github.com/avast/apkverifier"
 	"os"
 )
 
@@ -43,4 +43,5 @@ func main() {
 		fmt.Println(cert)
 	}
 }
+
 ```
