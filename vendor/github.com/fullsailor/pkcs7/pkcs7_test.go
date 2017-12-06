@@ -1,11 +1,11 @@
 package pkcs7
 
 import (
+	x509 "apkverifier/x509andr"
 	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"

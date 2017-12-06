@@ -171,7 +171,9 @@ func readObject(ber []byte, offset int) (asn1Object, int, error) {
 			return nil, 0, errors.New("ber2der: BER tag length is negative")
 		}
 		if 0x0 == (int)(ber[offset]) {
-			return nil, 0, errors.New("ber2der: BER tag length has leading zero")
+			offset++
+			numberOfBytes--
+			//return nil, 0, errors.New(fmt.Sprintf("ber2der: BER tag length has leading zero %d", offset))
 		}
 		//fmt.Printf("--> (compute length) indicator byte: %x\n", l)
 		//fmt.Printf("--> (compute length) length bytes: % X\n", ber[offset:offset+numberOfBytes])

@@ -1,0 +1,150 @@
+diff --git a/ber.go b/ber.go
+index bf3e804..224bf8c 100644
+--- a/ber.go
++++ b/ber.go
+@@ -171,7 +171,9 @@ func readObject(ber []byte, offset int) (asn1Object, int, error) {
+ 			return nil, 0, errors.New("ber2der: BER tag length is negative")
+ 		}
+ 		if 0x0 == (int)(ber[offset]) {
+-			return nil, 0, errors.New("ber2der: BER tag length has leading zero")
++			offset++
++			numberOfBytes--
++			//return nil, 0, errors.New(fmt.Sprintf("ber2der: BER tag length has leading zero %d", offset))
+ 		}
+ 		//fmt.Printf("--> (compute length) indicator byte: %x\n", l)
+ 		//fmt.Printf("--> (compute length) length bytes: % X\n", ber[offset:offset+numberOfBytes])
+diff --git a/pkcs7.go b/pkcs7.go
+index 8d5af85..b619767 100644
+--- a/pkcs7.go
++++ b/pkcs7.go
+@@ -2,6 +2,7 @@
+ package pkcs7
+ 
+ import (
++	x509 "apkverifier/x509andr"
+ 	"bytes"
+ 	"crypto"
+ 	"crypto/aes"
+@@ -10,7 +11,7 @@ import (
+ 	"crypto/hmac"
+ 	"crypto/rand"
+ 	"crypto/rsa"
+-	"crypto/x509"
++	go_x509 "crypto/x509"
+ 	"crypto/x509/pkix"
+ 	"encoding/asn1"
+ 	"errors"
+@@ -20,12 +21,13 @@ import (
+ 	"time"
+ 
+ 	_ "crypto/sha1" // for crypto.SHA1
++	"reflect"
+ )
+ 
+ // PKCS7 Represents a PKCS7 structure
+ type PKCS7 struct {
+ 	Content      []byte
+-	Certificates []*x509.Certificate
++	Certificates []*go_x509.Certificate
+ 	CRLs         []pkix.CertificateList
+ 	Signers      []signerInfo
+ 	raw          interface{}
+@@ -174,9 +176,26 @@ func parseSignedData(data []byte) (*PKCS7, error) {
+ 		// assuming this is tag 04
+ 		content = compound.Bytes
+ 	}
++
++	goCerts := make([]*go_x509.Certificate, len(certs))
++	for i := range certs {
++		var cert go_x509.Certificate
++		goval := reflect.ValueOf(&cert).Elem()
++		ourval := reflect.ValueOf(certs[i]).Elem()
++		for i := 0; i < ourval.NumField(); i++ {
++			n := ourval.Type().Field(i).Name
++			out := goval.FieldByName(n)
++			if out.IsValid() {
++				in := ourval.Field(i)
++				out.Set(in.Convert(out.Type()))
++			}
++		}
++		goCerts[i] = &cert
++	}
++
+ 	return &PKCS7{
+ 		Content:      content,
+-		Certificates: certs,
++		Certificates: goCerts,
+ 		CRLs:         sd.CRLs,
+ 		Signers:      sd.SignerInfos,
+ 		raw:          sd}, nil
+@@ -254,7 +273,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo) error {
+ 		return errors.New("pkcs7: No certificate for signer")
+ 	}
+ 
+-	algo := x509.SHA1WithRSA
++	algo := go_x509.SHA1WithRSA
+ 	return cert.CheckSignature(algo, signedData, signer.EncryptedDigest)
+ }
+ 
+@@ -277,7 +296,7 @@ var (
+ 	oidEncryptionAlgorithmRSA = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
+ )
+ 
+-func getCertFromCertsByIssuerAndSerial(certs []*x509.Certificate, ias issuerAndSerial) *x509.Certificate {
++func getCertFromCertsByIssuerAndSerial(certs []*go_x509.Certificate, ias issuerAndSerial) *go_x509.Certificate {
+ 	for _, cert := range certs {
+ 		if isCertMatchForIssuerAndSerial(cert, ias) {
+ 			return cert
+@@ -296,7 +315,7 @@ func getHashForOID(oid asn1.ObjectIdentifier) (crypto.Hash, error) {
+ 
+ // GetOnlySigner returns an x509.Certificate for the first signer of the signed
+ // data payload. If there are more or less than one signer, nil is returned
+-func (p7 *PKCS7) GetOnlySigner() *x509.Certificate {
++func (p7 *PKCS7) GetOnlySigner() *go_x509.Certificate {
+ 	if len(p7.Signers) != 1 {
+ 		return nil
+ 	}
+@@ -311,7 +330,7 @@ var ErrUnsupportedAlgorithm = errors.New("pkcs7: cannot decrypt data: only RSA,
+ var ErrNotEncryptedContent = errors.New("pkcs7: content data is a decryptable data type")
+ 
+ // Decrypt decrypts encrypted content info for recipient cert and private key
+-func (p7 *PKCS7) Decrypt(cert *x509.Certificate, pk crypto.PrivateKey) ([]byte, error) {
++func (p7 *PKCS7) Decrypt(cert *go_x509.Certificate, pk crypto.PrivateKey) ([]byte, error) {
+ 	data, ok := p7.raw.(envelopedData)
+ 	if !ok {
+ 		return nil, ErrNotEncryptedContent
+@@ -430,7 +449,7 @@ func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
+ 	return plaintext, nil
+ }
+ 
+-func selectRecipientForCertificate(recipients []recipientInfo, cert *x509.Certificate) recipientInfo {
++func selectRecipientForCertificate(recipients []recipientInfo, cert *go_x509.Certificate) recipientInfo {
+ 	for _, recp := range recipients {
+ 		if isCertMatchForIssuerAndSerial(cert, recp.IssuerAndSerialNumber) {
+ 			return recp
+@@ -439,7 +458,7 @@ func selectRecipientForCertificate(recipients []recipientInfo, cert *x509.Certif
+ 	return recipientInfo{}
+ }
+ 
+-func isCertMatchForIssuerAndSerial(cert *x509.Certificate, ias issuerAndSerial) bool {
++func isCertMatchForIssuerAndSerial(cert *go_x509.Certificate, ias issuerAndSerial) bool {
+ 	return cert.SerialNumber.Cmp(ias.SerialNumber) == 0 && bytes.Compare(cert.RawIssuer, ias.IssuerName.FullBytes) == 0
+ }
+ 
+diff --git a/pkcs7_test.go b/pkcs7_test.go
+index cbe2c5c..1c5953d 100644
+--- a/pkcs7_test.go
++++ b/pkcs7_test.go
+@@ -1,11 +1,11 @@
+ package pkcs7
+ 
+ import (
++	x509 "apkverifier/x509andr"
+ 	"bytes"
+ 	"crypto"
+ 	"crypto/rand"
+ 	"crypto/rsa"
+-	"crypto/x509"
+ 	"crypto/x509/pkix"
+ 	"encoding/asn1"
+ 	"encoding/pem"
