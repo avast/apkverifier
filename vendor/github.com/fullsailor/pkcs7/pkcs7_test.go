@@ -1,7 +1,7 @@
 package pkcs7
 
 import (
-	x509 "apkverifier/x509andr"
+	x509 "github.com/avast/apkverifier/x509andr"
 	"bytes"
 	"crypto"
 	"crypto/rand"

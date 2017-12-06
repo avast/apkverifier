@@ -2,7 +2,7 @@
 package pkcs7
 
 import (
-	x509 "apkverifier/x509andr"
+	x509 "github.com/avast/apkverifier/x509andr"
 	"bytes"
 	"crypto"
 	"crypto/aes"
@@ -19,9 +19,9 @@ import (
 	"math/big"
 	"sort"
 	"time"
+	"reflect"
 
 	_ "crypto/sha1" // for crypto.SHA1
-	"reflect"
 )
 
 // PKCS7 Represents a PKCS7 structure

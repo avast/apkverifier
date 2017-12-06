@@ -14,14 +14,14 @@ index bf3e804..224bf8c 100644
  		//fmt.Printf("--> (compute length) indicator byte: %x\n", l)
  		//fmt.Printf("--> (compute length) length bytes: % X\n", ber[offset:offset+numberOfBytes])
 diff --git a/pkcs7.go b/pkcs7.go
-index 8d5af85..b619767 100644
+index 8d5af85..c21ba40 100644
 --- a/pkcs7.go
 +++ b/pkcs7.go
 @@ -2,6 +2,7 @@
  package pkcs7
  
  import (
-+	x509 "apkverifier/x509andr"
++	x509 "github.com/avast/apkverifier/x509andr"
  	"bytes"
  	"crypto"
  	"crypto/aes"
@@ -132,14 +132,14 @@ index 8d5af85..b619767 100644
  }
  
 diff --git a/pkcs7_test.go b/pkcs7_test.go
-index cbe2c5c..1c5953d 100644
+index cbe2c5c..2ab1f5a 100644
 --- a/pkcs7_test.go
 +++ b/pkcs7_test.go
 @@ -1,11 +1,11 @@
  package pkcs7
  
  import (
-+	x509 "apkverifier/x509andr"
++	x509 "github.com/avast/apkverifier/x509andr"
  	"bytes"
  	"crypto"
  	"crypto/rand"
