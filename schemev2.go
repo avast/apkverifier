@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
-	"cutils"
 	"encoding/asn1"
 	"encoding/binary"
 	"errors"
@@ -41,7 +40,7 @@ const (
 )
 
 const (
-	chunkSize = 1024 * 1024
+	maxChunkSize = 1024 * 1024
 
 	sigRsaPssWithSha256      = 0x0101
 	sigRsaPssWithSha512      = 0x0102
@@ -137,7 +136,9 @@ func (s *schemeV2) findEocd() error {
 }
 
 func (s *schemeV2) findEocdMaxCommentSize(maxCommentSize int) error {
-	maxCommentSize = cutils.MinInt(maxCommentSize, int(s.fileSize-eocdRecMinSize))
+	if maxCommentSize > int(s.fileSize-eocdRecMinSize) {
+		maxCommentSize = int(s.fileSize-eocdRecMinSize)
+	}
 
 	buf := make([]byte, eocdRecMinSize+maxCommentSize)
 	bufOffsetInFile := s.fileSize - int64(len(buf))
@@ -150,7 +151,10 @@ func (s *schemeV2) findEocdMaxCommentSize(maxCommentSize int) error {
 		return err
 	}
 
-	maxCommentSize = cutils.MinInt(len(buf)-eocdRecMinSize, math.MaxUint16)
+	maxCommentSize = len(buf)-eocdRecMinSize
+	if maxCommentSize > math.MaxUint16 {
+		maxCommentSize = math.MaxUint16
+	}
 	emptyCommentStart := len(buf) - eocdRecMinSize
 
 	for commentSize := 0; commentSize < maxCommentSize; commentSize++ {
@@ -662,7 +666,11 @@ func (s *schemeV2) computeContentDigests(digestAlgorithms []crypto.Hash, content
 		var offset int64
 		remaining := input.length()
 		for remaining > 0 {
-			chunkSize := cutils.MinInt64(remaining, chunkSize)
+			chunkSize := remaining
+			if chunkSize > maxChunkSize {
+				chunkSize = maxChunkSize
+			}
+
 			binary.LittleEndian.PutUint32(chunkContentPrefix[1:], uint32(chunkSize))
 
 			for i := range hashers {
@@ -705,7 +713,7 @@ type dataSourceApk struct {
 }
 
 func (se *dataSourceApk) chunkCount() int64 {
-	return (se.end - se.start + chunkSize - 1) / chunkSize
+	return (se.end - se.start + maxChunkSize - 1) / maxChunkSize
 }
 
 func (se *dataSourceApk) writeTo(w io.Writer, offset, size int64) error {
@@ -732,7 +740,7 @@ type dataSourceEocd struct {
 }
 
 func (se *dataSourceEocd) chunkCount() int64 {
-	return (int64(len(se.eocd)) + chunkSize - 1) / chunkSize
+	return (int64(len(se.eocd)) + maxChunkSize - 1) / maxChunkSize
 }
 
 func (se *dataSourceEocd) writeTo(w io.Writer, offset, size int64) error {

@@ -1,7 +1,7 @@
 package apkverifier
 
 import (
-	"binxml"
+	"github.com/avast/apkparser"
 	"crypto/x509"
 )
 
@@ -10,7 +10,7 @@ type Result struct {
 	SignerCerts   [][]*x509.Certificate
 }
 
-func Verify(path string, optionalZip *binxml.ZipReader) (res Result, err error) {
+func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err error) {
 	res.SignerCerts, err = verifySchemeV2(path)
 	if err == nil || !isSchemeV2NotFoundError(err) {
 		res.UsingSchemeV2 = true
@@ -18,7 +18,7 @@ func Verify(path string, optionalZip *binxml.ZipReader) (res Result, err error) 
 	}
 
 	if optionalZip == nil {
-		optionalZip, err := binxml.OpenZip(path)
+		optionalZip, err := apkparser.OpenZip(path)
 		if err != nil {
 			return Result{}, err
 		}

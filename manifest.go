@@ -1,7 +1,7 @@
 package apkverifier
 
 import (
-	"binxml"
+	"github.com/avast/apkparser"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -32,7 +32,7 @@ type manifestParserContext struct {
 	consecutiveLineBreaks int
 }
 
-func parseManifest(f *binxml.ZipReaderFile, withChunks bool) (*manifest, error) {
+func parseManifest(f *apkparser.ZipReaderFile, withChunks bool) (*manifest, error) {
 	if err := f.Open(); err != nil {
 		return nil, err
 	}

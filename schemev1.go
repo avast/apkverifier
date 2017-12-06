@@ -1,7 +1,7 @@
 package apkverifier
 
 import (
-	"binxml"
+	"github.com/avast/apkparser"
 	"bytes"
 	"crypto"
 	"crypto/dsa"
@@ -12,7 +12,6 @@ import (
 	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"cutils"
 	"encoding/asn1"
 	"encoding/base64"
 	"errors"
@@ -90,7 +89,7 @@ type schemeV1 struct {
 	chain    [][]*x509.Certificate
 }
 
-func verifySchemeV1(apk *binxml.ZipReader) ([][]*x509.Certificate, error) {
+func verifySchemeV1(apk *apkparser.ZipReader) ([][]*x509.Certificate, error) {
 	scheme := schemeV1{
 		sigs:    make(map[string]*schemeV1Signature),
 		hashers: make([]hash.Hash, len(digestHashers)),
@@ -128,7 +127,7 @@ func verifySchemeV1(apk *binxml.ZipReader) ([][]*x509.Certificate, error) {
 	return scheme.chain, err
 }
 
-func (p *schemeV1) addManifest(f *binxml.ZipReaderFile) (err error) {
+func (p *schemeV1) addManifest(f *apkparser.ZipReaderFile) (err error) {
 	if p.manifest != nil {
 		return fmt.Errorf("Manifest already parsed!")
 	}
@@ -137,7 +136,7 @@ func (p *schemeV1) addManifest(f *binxml.ZipReaderFile) (err error) {
 	return
 }
 
-func (p *schemeV1) addSignatureFile(pathUpper string, f *binxml.ZipReaderFile) (err error) {
+func (p *schemeV1) addSignatureFile(pathUpper string, f *apkparser.ZipReaderFile) (err error) {
 	prefix := p.signaturePrefix(pathUpper)
 	s := p.sigs[prefix]
 	if s == nil {
@@ -149,7 +148,7 @@ func (p *schemeV1) addSignatureFile(pathUpper string, f *binxml.ZipReaderFile) (
 	return
 }
 
-func (p *schemeV1) addSignatureBlock(pathUpper string, f *binxml.ZipReaderFile) error {
+func (p *schemeV1) addSignatureBlock(pathUpper string, f *apkparser.ZipReaderFile) error {
 	if err := f.Open(); err != nil {
 		return err
 	}
@@ -208,7 +207,7 @@ func (p *schemeV1) prepForVerification() error {
 	return nil
 }
 
-func (p *schemeV1) verify(apk *binxml.ZipReader) error {
+func (p *schemeV1) verify(apk *apkparser.ZipReader) error {
 	var err error
 	validSignatures := map[string]*schemeV1Signature{}
 	var lastChain []*x509.Certificate
@@ -319,7 +318,7 @@ func (p *schemeV1) verify(apk *binxml.ZipReader) error {
 	return p.verifyMainManifest(apk)
 }
 
-func (p *schemeV1) verifyMainManifest(apk *binxml.ZipReader) error {
+func (p *schemeV1) verifyMainManifest(apk *apkparser.ZipReader) error {
 	for path := range p.manifest.entries {
 		if _, prs := apk.File[path]; !prs {
 			return fmt.Errorf("Manifest entry '%s' does not exists.", path)
@@ -444,7 +443,7 @@ func (p *schemeV1) verifyManifestEntry(entry map[string]string, digestSuffix str
 	return verify(hash, p.hashers[algoIdx])
 }
 
-func (p *schemeV1) verifyFileHash(f *binxml.ZipReaderFile, hash []byte, hasher hash.Hash) error {
+func (p *schemeV1) verifyFileHash(f *apkparser.ZipReaderFile, hash []byte, hasher hash.Hash) error {
 	if err := f.Open(); err != nil {
 		return fmt.Errorf("Can't generate hashes for '%s': %s", f.Name, err.Error())
 	}
@@ -588,7 +587,10 @@ func (a byX501Canonical) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byX501Canonical) Less(i, j int) bool {
 	ioid1 := a[i].Type
 	ioid2 := a[j].Type
-	min := cutils.MinInt(len(ioid1), len(ioid2))
+	min := len(ioid1)
+	if len(ioid2) < min {
+		min = len(ioid2)
+	}
 	for x := 0; x < min; x++ {
 		if ioid1[x] < ioid2[x] {
 			return true
