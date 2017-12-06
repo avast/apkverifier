@@ -59,10 +59,6 @@ var (
 	errEocdNotFound  = errors.New("EOCD record not found.")
 )
 
-type SchemeV2Result struct {
-	Cert *x509.Certificate
-}
-
 type schemeV2 struct {
 	file             *os.File
 	fileSize         int64
