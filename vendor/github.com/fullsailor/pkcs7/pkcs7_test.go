@@ -6,6 +6,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	go_x509 "crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
@@ -42,7 +43,7 @@ func TestVerifyEC2(t *testing.T) {
 	if err != nil {
 		t.Errorf("Parse encountered unexpected error: %v", err)
 	}
-	p7.Certificates = []*x509.Certificate{fixture.Certificate}
+	p7.Certificates = []*go_x509.Certificate{ andrCertToGoCert(fixture.Certificate) }
 	if err := p7.Verify(); err != nil {
 		t.Errorf("Verify failed with error: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestDecrypt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := p7.Decrypt(fixture.Certificate, fixture.PrivateKey)
+	content, err := p7.Decrypt(andrCertToGoCert(fixture.Certificate), fixture.PrivateKey)
 	if err != nil {
 		t.Errorf("Cannot Decrypt with error: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestEncrypt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cannot Parse encrypted result: %s", err)
 		}
-		result, err := p7.Decrypt(cert.Certificate, cert.PrivateKey)
+		result, err := p7.Decrypt(andrCertToGoCert(cert.Certificate), cert.PrivateKey)
 		if err != nil {
 			t.Fatalf("cannot Decrypt encrypted result: %s", err)
 		}

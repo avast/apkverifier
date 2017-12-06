@@ -149,6 +149,21 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 	return nil, ErrUnsupportedContentType
 }
 
+func andrCertToGoCert(certificate *x509.Certificate) *go_x509.Certificate {
+	var cert go_x509.Certificate
+	goval := reflect.ValueOf(&cert).Elem()
+	ourval := reflect.ValueOf(certificate).Elem()
+	for i := 0; i < ourval.NumField(); i++ {
+		n := ourval.Type().Field(i).Name
+		out := goval.FieldByName(n)
+		if out.IsValid() {
+			in := ourval.Field(i)
+			out.Set(in.Convert(out.Type()))
+		}
+	}
+	return &cert
+}
+
 func parseSignedData(data []byte) (*PKCS7, error) {
 	var sd signedData
 	asn1.Unmarshal(data, &sd)
@@ -179,18 +194,7 @@ func parseSignedData(data []byte) (*PKCS7, error) {
 
 	goCerts := make([]*go_x509.Certificate, len(certs))
 	for i := range certs {
-		var cert go_x509.Certificate
-		goval := reflect.ValueOf(&cert).Elem()
-		ourval := reflect.ValueOf(certs[i]).Elem()
-		for i := 0; i < ourval.NumField(); i++ {
-			n := ourval.Type().Field(i).Name
-			out := goval.FieldByName(n)
-			if out.IsValid() {
-				in := ourval.Field(i)
-				out.Set(in.Convert(out.Type()))
-			}
-		}
-		goCerts[i] = &cert
+		goCerts[i] = andrCertToGoCert(certs[i])
 	}
 
 	return &PKCS7{

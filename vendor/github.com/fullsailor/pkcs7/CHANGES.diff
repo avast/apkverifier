@@ -13,8 +13,21 @@ index bf3e804..224bf8c 100644
  		}
  		//fmt.Printf("--> (compute length) indicator byte: %x\n", l)
  		//fmt.Printf("--> (compute length) length bytes: % X\n", ber[offset:offset+numberOfBytes])
+diff --git a/ber_test.go b/ber_test.go
+index 19a0f51..7cf9e8e 100644
+--- a/ber_test.go
++++ b/ber_test.go
+@@ -44,7 +44,7 @@ func TestBer2Der_Negatives(t *testing.T) {
+ 	}{
+ 		{[]byte{0x30, 0x85}, "length too long"},
+ 		{[]byte{0x30, 0x84, 0x80, 0x0, 0x0, 0x0}, "length is negative"},
+-		{[]byte{0x30, 0x82, 0x0, 0x1}, "length has leading zero"},
++		//{[]byte{0x30, 0x82, 0x0, 0x1}, "length has leading zero"},
+ 		{[]byte{0x30, 0x80, 0x1, 0x2, 0x1, 0x2}, "Invalid BER format"},
+ 		{[]byte{0x30, 0x03, 0x01, 0x02}, "length is more than available data"},
+ 	}
 diff --git a/pkcs7.go b/pkcs7.go
-index 8d5af85..1205438 100644
+index 8d5af85..333b0e2 100644
 --- a/pkcs7.go
 +++ b/pkcs7.go
 @@ -2,6 +2,7 @@
@@ -51,25 +64,36 @@ index 8d5af85..1205438 100644
  	CRLs         []pkix.CertificateList
  	Signers      []signerInfo
  	raw          interface{}
-@@ -174,9 +176,26 @@ func parseSignedData(data []byte) (*PKCS7, error) {
+@@ -147,6 +149,21 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
+ 	return nil, ErrUnsupportedContentType
+ }
+ 
++func andrCertToGoCert(certificate *x509.Certificate) *go_x509.Certificate {
++	var cert go_x509.Certificate
++	goval := reflect.ValueOf(&cert).Elem()
++	ourval := reflect.ValueOf(certificate).Elem()
++	for i := 0; i < ourval.NumField(); i++ {
++		n := ourval.Type().Field(i).Name
++		out := goval.FieldByName(n)
++		if out.IsValid() {
++			in := ourval.Field(i)
++			out.Set(in.Convert(out.Type()))
++		}
++	}
++	return &cert
++}
++
+ func parseSignedData(data []byte) (*PKCS7, error) {
+ 	var sd signedData
+ 	asn1.Unmarshal(data, &sd)
+@@ -174,9 +191,15 @@ func parseSignedData(data []byte) (*PKCS7, error) {
  		// assuming this is tag 04
  		content = compound.Bytes
  	}
 +
 +	goCerts := make([]*go_x509.Certificate, len(certs))
 +	for i := range certs {
-+		var cert go_x509.Certificate
-+		goval := reflect.ValueOf(&cert).Elem()
-+		ourval := reflect.ValueOf(certs[i]).Elem()
-+		for i := 0; i < ourval.NumField(); i++ {
-+			n := ourval.Type().Field(i).Name
-+			out := goval.FieldByName(n)
-+			if out.IsValid() {
-+				in := ourval.Field(i)
-+				out.Set(in.Convert(out.Type()))
-+			}
-+		}
-+		goCerts[i] = &cert
++		goCerts[i] = andrCertToGoCert(certs[i])
 +	}
 +
  	return &PKCS7{
@@ -79,7 +103,7 @@ index 8d5af85..1205438 100644
  		CRLs:         sd.CRLs,
  		Signers:      sd.SignerInfos,
  		raw:          sd}, nil
-@@ -254,7 +273,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo) error {
+@@ -254,7 +277,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo) error {
  		return errors.New("pkcs7: No certificate for signer")
  	}
  
@@ -88,7 +112,7 @@ index 8d5af85..1205438 100644
  	return cert.CheckSignature(algo, signedData, signer.EncryptedDigest)
  }
  
-@@ -277,7 +296,7 @@ var (
+@@ -277,7 +300,7 @@ var (
  	oidEncryptionAlgorithmRSA = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
  )
  
@@ -97,7 +121,7 @@ index 8d5af85..1205438 100644
  	for _, cert := range certs {
  		if isCertMatchForIssuerAndSerial(cert, ias) {
  			return cert
-@@ -296,7 +315,7 @@ func getHashForOID(oid asn1.ObjectIdentifier) (crypto.Hash, error) {
+@@ -296,7 +319,7 @@ func getHashForOID(oid asn1.ObjectIdentifier) (crypto.Hash, error) {
  
  // GetOnlySigner returns an x509.Certificate for the first signer of the signed
  // data payload. If there are more or less than one signer, nil is returned
@@ -106,7 +130,7 @@ index 8d5af85..1205438 100644
  	if len(p7.Signers) != 1 {
  		return nil
  	}
-@@ -311,7 +330,7 @@ var ErrUnsupportedAlgorithm = errors.New("pkcs7: cannot decrypt data: only RSA,
+@@ -311,7 +334,7 @@ var ErrUnsupportedAlgorithm = errors.New("pkcs7: cannot decrypt data: only RSA,
  var ErrNotEncryptedContent = errors.New("pkcs7: content data is a decryptable data type")
  
  // Decrypt decrypts encrypted content info for recipient cert and private key
@@ -115,7 +139,7 @@ index 8d5af85..1205438 100644
  	data, ok := p7.raw.(envelopedData)
  	if !ok {
  		return nil, ErrNotEncryptedContent
-@@ -430,7 +449,7 @@ func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
+@@ -430,7 +453,7 @@ func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
  	return plaintext, nil
  }
  
@@ -124,7 +148,7 @@ index 8d5af85..1205438 100644
  	for _, recp := range recipients {
  		if isCertMatchForIssuerAndSerial(cert, recp.IssuerAndSerialNumber) {
  			return recp
-@@ -439,7 +458,7 @@ func selectRecipientForCertificate(recipients []recipientInfo, cert *x509.Certif
+@@ -439,7 +462,7 @@ func selectRecipientForCertificate(recipients []recipientInfo, cert *x509.Certif
  	return recipientInfo{}
  }
  
@@ -134,10 +158,10 @@ index 8d5af85..1205438 100644
  }
  
 diff --git a/pkcs7_test.go b/pkcs7_test.go
-index cbe2c5c..f9d58b0 100644
+index cbe2c5c..740543f 100644
 --- a/pkcs7_test.go
 +++ b/pkcs7_test.go
-@@ -1,11 +1,11 @@
+@@ -1,11 +1,12 @@
  package pkcs7
  
  import (
@@ -147,6 +171,34 @@ index cbe2c5c..f9d58b0 100644
  	"crypto/rand"
  	"crypto/rsa"
 -	"crypto/x509"
++	go_x509 "crypto/x509"
  	"crypto/x509/pkix"
  	"encoding/asn1"
  	"encoding/pem"
+@@ -42,7 +43,7 @@ func TestVerifyEC2(t *testing.T) {
+ 	if err != nil {
+ 		t.Errorf("Parse encountered unexpected error: %v", err)
+ 	}
+-	p7.Certificates = []*x509.Certificate{fixture.Certificate}
++	p7.Certificates = []*go_x509.Certificate{ andrCertToGoCert(fixture.Certificate) }
+ 	if err := p7.Verify(); err != nil {
+ 		t.Errorf("Verify failed with error: %v", err)
+ 	}
+@@ -65,7 +66,7 @@ func TestDecrypt(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	content, err := p7.Decrypt(fixture.Certificate, fixture.PrivateKey)
++	content, err := p7.Decrypt(andrCertToGoCert(fixture.Certificate), fixture.PrivateKey)
+ 	if err != nil {
+ 		t.Errorf("Cannot Decrypt with error: %v", err)
+ 	}
+@@ -269,7 +270,7 @@ func TestEncrypt(t *testing.T) {
+ 		if err != nil {
+ 			t.Fatalf("cannot Parse encrypted result: %s", err)
+ 		}
+-		result, err := p7.Decrypt(cert.Certificate, cert.PrivateKey)
++		result, err := p7.Decrypt(andrCertToGoCert(cert.Certificate), cert.PrivateKey)
+ 		if err != nil {
+ 			t.Fatalf("cannot Decrypt encrypted result: %s", err)
+ 		}
