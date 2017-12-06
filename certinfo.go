@@ -86,8 +86,8 @@ func (ci *CertInfo) Fill(cert *x509.Certificate) {
 // Cert 90d0f1ac70d647edfdf905ff129379bfae469ad6, valid from 2015-08-05 08:01:53 +0000 UTC to 2045-07-28 08:01:53 +0000 UTC,
 // Subject C=US, O=Android, CN=Android Debug, Issuer C=US, O=Android, CN=Android Debug
 func (ci *CertInfo) String() string {
-	return fmt.Sprintf("Cert %s, valid from %s to %s, Subject %s, Issuer %s",
-		ci.Sha1, ci.ValidFrom, ci.ValidTo, ci.Subject, ci.Issuer)
+	return fmt.Sprintf("Cert %s, valid from %s to %s, Subject: %s, Issuer: %s",
+		ci.Sha1, ci.ValidFrom.Format(time.RFC3339), ci.ValidTo.Format(time.RFC3339), ci.Subject, ci.Issuer)
 }
 
 func (ci *CertInfo) pkixNameToString(n *pkix.Name) string {
