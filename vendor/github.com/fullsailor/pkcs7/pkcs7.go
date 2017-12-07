@@ -20,6 +20,8 @@ import (
 	"sort"
 	"time"
 	"reflect"
+	"sync/atomic"
+	"os"
 
 	_ "crypto/sha1" // for crypto.SHA1
 )
@@ -149,6 +151,19 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 	return nil, ErrUnsupportedContentType
 }
 
+var andrCertPanicReported uint32
+func andrCertConvertVal(out, in reflect.Value) {
+	defer func() {
+		if p := recover(); p != nil {
+			if atomic.CompareAndSwapUint32(&andrCertPanicReported, 0, 1) {
+				fmt.Fprintf(os.Stderr, "Conversion in pkcs7 andrCertToGoCert failed: %s\n", p)
+			}
+		}
+	}()
+
+	out.Set(in.Convert(out.Type()))
+}
+
 func andrCertToGoCert(certificate *x509.Certificate) *go_x509.Certificate {
 	var cert go_x509.Certificate
 	goval := reflect.ValueOf(&cert).Elem()
@@ -157,8 +172,7 @@ func andrCertToGoCert(certificate *x509.Certificate) *go_x509.Certificate {
 		n := ourval.Type().Field(i).Name
 		out := goval.FieldByName(n)
 		if out.IsValid() {
-			in := ourval.Field(i)
-			out.Set(in.Convert(out.Type()))
+			andrCertConvertVal(out, ourval.Field(i))
 		}
 	}
 	return &cert
