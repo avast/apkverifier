@@ -15,6 +15,17 @@ type Result struct {
 	SignerCerts   [][]*x509.Certificate
 }
 
+// Returned from the Verify method if the file starts with the DEX magic value,
+// but otherwise looks like a properly signed APK.
+//
+// This detect 'Janus' Android vulnerability where a DEX is prepended to a valid,
+// signed APK file. The signature verification passes because with v1 scheme,
+// only the APK portion of the file is checked, but Android then loads the prepended,
+// unsigned DEX file instead of the one from APK.
+// https://www.guardsquare.com/en/blog/new-android-vulnerability-allows-attackers-modify-apps-without-affecting-their-signatures
+//
+// If this error is returned, the signature is otherwise valid (the err would be nil
+// had it not have the DEX file prepended).
 var ErrMixedDexApkFile = errors.New("This file is both DEX and ZIP archive! Exploit?")
 
 const (
