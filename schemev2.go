@@ -82,16 +82,26 @@ func isSchemeV2NotFoundError(err error) bool {
 	return ok
 }
 
-func verifySchemeV2(path string) ([][]*x509.Certificate, error) {
+func verifySchemeV2(path string) (certs [][]*x509.Certificate, magic uint32, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
 
 	fi, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	if fi.Size() < 4 {
+		err = fmt.Errorf("APK file is too short (%d bytes).", fi.Size())
+		return
+	}
+
+	if err = binary.Read(f, binary.LittleEndian, &magic); err != nil {
+		err = fmt.Errorf("Failed to read APK magic: %s", err.Error())
+		return
 	}
 
 	s := schemeV2{
@@ -99,25 +109,30 @@ func verifySchemeV2(path string) ([][]*x509.Certificate, error) {
 		fileSize: fi.Size(),
 	}
 
-	if err := s.findEocd(); err != nil {
-		return nil, &schemeV2NotFoundError{err}
+	if err = s.findEocd(); err != nil {
+		err = &schemeV2NotFoundError{err}
+		return
 	}
 
 	if s.isZip64() {
-		return nil, &schemeV2NotFoundError{errors.New("ZIP64 APK not supported")}
+		err = &schemeV2NotFoundError{errors.New("ZIP64 APK not supported")}
+		return
 	}
 
 	var sigBlock []byte
 	sigBlock, s.sigBlockOffset, err = s.findApkSigningBlock()
 	if err != nil {
-		return nil, &schemeV2NotFoundError{err}
+		err = &schemeV2NotFoundError{err}
+		return
 	}
 
-	if err := s.findSignatureSchemeV2Block(sigBlock); err != nil {
-		return nil, &schemeV2NotFoundError{err}
+	if err = s.findSignatureSchemeV2Block(sigBlock); err != nil {
+		err = &schemeV2NotFoundError{err}
+		return
 	}
 
-	return s.verify()
+	certs, err = s.verify()
+	return
 }
 
 func (s *schemeV2) findEocd() error {
@@ -133,7 +148,7 @@ func (s *schemeV2) findEocd() error {
 
 func (s *schemeV2) findEocdMaxCommentSize(maxCommentSize int) error {
 	if maxCommentSize > int(s.fileSize-eocdRecMinSize) {
-		maxCommentSize = int(s.fileSize-eocdRecMinSize)
+		maxCommentSize = int(s.fileSize - eocdRecMinSize)
 	}
 
 	buf := make([]byte, eocdRecMinSize+maxCommentSize)
@@ -147,7 +162,7 @@ func (s *schemeV2) findEocdMaxCommentSize(maxCommentSize int) error {
 		return err
 	}
 
-	maxCommentSize = len(buf)-eocdRecMinSize
+	maxCommentSize = len(buf) - eocdRecMinSize
 	if maxCommentSize > math.MaxUint16 {
 		maxCommentSize = math.MaxUint16
 	}

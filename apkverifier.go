@@ -4,8 +4,9 @@
 package apkverifier
 
 import (
-	"github.com/avast/apkparser"
 	"crypto/x509"
+	"errors"
+	"github.com/avast/apkparser"
 )
 
 // Contains result of Apk verification
@@ -14,13 +15,20 @@ type Result struct {
 	SignerCerts   [][]*x509.Certificate
 }
 
+var ErrMixedDexApkFile = errors.New("This file is both DEX and ZIP archive! Exploit?")
+
+const (
+	dexHeaderMagic uint32 = 0xa786564 // "dex\n", littleendinan
+)
+
 // Verify the application signature. If err is nil, the signature is correct,
 // otherwise it is not and res may or may not contain extracted certificates,
 // depending on how the signature verification failed.
 // Path is required, pass optionalZip if you have the ZipReader already opened and want to reuse it.
 // This method will not close it.
 func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err error) {
-	res.SignerCerts, err = verifySchemeV2(path)
+	var fileMagic uint32
+	res.SignerCerts, fileMagic, err = verifySchemeV2(path)
 	if err == nil || !isSchemeV2NotFoundError(err) {
 		res.UsingSchemeV2 = true
 		return
@@ -35,5 +43,10 @@ func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err erro
 	}
 
 	res.SignerCerts, err = verifySchemeV1(optionalZip)
+
+	if err == nil && fileMagic == dexHeaderMagic {
+		err = ErrMixedDexApkFile
+	}
+
 	return
 }
