@@ -1,19 +1,24 @@
 package apkverifier
 
 import (
-	"github.com/avast/apkparser"
 	"errors"
 	"fmt"
+	"github.com/avast/apkparser"
 	"io/ioutil"
+	"strings"
 )
 
 const (
-	attrSignatureVersion     = "Signature-Version"
-	attrCreatedBy            = "Created-By"
-	attrDigestMainAttrSuffix = "-Digest-Manifest-Main-Attributes"
-	attrDigestSuffix         = "-Digest"
-	attrDigestSigntoolSuffix = "-Digest-Manifest"
-	attrAndroidApkSigned     = "X-Android-APK-Signed"
+	attrSignatureVersionCase = "Signature-Version"
+	attrManifestVersionCase  = "Manifest-Version"
+
+	attrSignatureVersion     = "signature-version"
+	attrName                 = "name"
+	attrCreatedBy            = "created-by"
+	attrDigestMainAttrSuffix = "-digest-manifest-main-attributes"
+	attrDigestSuffix         = "-digest"
+	attrDigestSigntoolSuffix = "-digest-manifest"
+	attrAndroidApkSigned     = "x-android-apk-signed"
 )
 
 type manifest struct {
@@ -90,7 +95,7 @@ func (ctx *manifestParserContext) parse(withChunks bool) error {
 			break
 		}
 
-		if n != "Name" {
+		if n != attrName {
 			return fmt.Errorf("Entry is not named")
 		}
 
@@ -141,6 +146,13 @@ func (ctx *manifestParserContext) readHeader() (name, value string, singleBlock 
 			if !ctx.isValidName(name) {
 				err = fmt.Errorf("Invalid attribute name in manifest: '%s'", name)
 				return
+			}
+
+			// Attributes except for Manifest-Version and Signature-Version are case-insensitive
+			// https://docs.oracle.com/javase/7/docs/technotes/guides/jar/jar.html#Notes_on_Manifest_and_Signature_Files
+			// Android however does not care and has case insensitive everything.
+			if true /*name != attrManifestVersionCase && name != attrSignatureVersionCase*/ {
+				name = strings.ToLower(name)
 			}
 
 			ctx.pos += 2 // For the ': ' separator

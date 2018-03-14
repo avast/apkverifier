@@ -31,10 +31,10 @@ import (
 // These two arrays are synchronized
 var (
 	digestAlgorithms = [...]string{
-		"SHA-512",
-		"SHA-384",
-		"SHA-256",
-		"SHA1",
+		"sha-512",
+		"sha-384",
+		"sha-256",
+		"sha1",
 	}
 	digestHashers = [...]func() hash.Hash{
 		sha512.New,
@@ -244,6 +244,7 @@ func (p *schemeV1) verify(apk *apkparser.ZipReader) error {
 		}
 
 		if _, prs := sm.main[attrSignatureVersion]; !prs {
+			err = fmt.Errorf("the manifest does not have %s attribute", attrSignatureVersion)
 			continue
 		}
 
