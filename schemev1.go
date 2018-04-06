@@ -78,6 +78,7 @@ var errNoKnownHashes = errors.New("No known hashes")
 
 type schemeV1Signature struct {
 	sigBlockFilename  string
+	manifestFilename  string
 	cert              *pkcs7.PKCS7
 	signatureManifest *manifest
 	chain             []*x509.Certificate
@@ -90,6 +91,13 @@ type schemeV1 struct {
 	chain    [][]*x509.Certificate
 }
 
+// The order of signature block files is not deterministic on Android because the file list goes through two hash maps.
+// First one is in the libziparchive and the second is java HashMap in StrictJarVerifier. This means that the verification
+// can sometimes fail and sometimes succeed on files that have two types of signature block file (e.g. TEST.RSA and TEST.DSA),
+// depending on which file Android parses first.
+//
+// We keep the behavior deterministic in our implementation, based on the file order in the ZIP.
+// This unfortunately produces different result than Android in some corner cases.
 func verifySchemeV1(apk *apkparser.ZipReader) ([][]*x509.Certificate, error) {
 	scheme := schemeV1{
 		sigs:    make(map[string]*schemeV1Signature),
@@ -97,31 +105,60 @@ func verifySchemeV1(apk *apkparser.ZipReader) ([][]*x509.Certificate, error) {
 	}
 
 	const prefix = "META-INF/"
-	var errors []string
-	for path, f := range apk.File {
-		upath := strings.ToUpper(path)
-		if !strings.HasPrefix(upath, prefix) {
+	var signatureBlocks []*apkparser.ZipReaderFile
+	signatureFiles := map[string]*apkparser.ZipReaderFile{}
+	for _, f := range apk.FilesOrdered {
+		if !strings.HasPrefix(f.Name, prefix) {
 			continue
 		}
 
 		switch {
-		case upath == "META-INF/MANIFEST.MF":
+		case f.Name == "META-INF/MANIFEST.MF":
 			if err := scheme.addManifest(f); err != nil {
-				errors = append(errors, err.Error())
+				return nil, fmt.Errorf("failed to parse main manifest: %s", err.Error())
 			}
-		case strings.HasSuffix(upath, ".RSA") || strings.HasSuffix(upath, ".DSA") || strings.HasSuffix(upath, ".EC"):
-			if err := scheme.addSignatureBlock(upath, f); err != nil {
-				errors = append(errors, err.Error())
-			}
-		case strings.HasSuffix(upath, ".SF"):
-			if err := scheme.addSignatureFile(upath, f); err != nil {
-				errors = append(errors, err.Error())
+		case strings.HasSuffix(f.Name, ".RSA") || strings.HasSuffix(f.Name, ".DSA") || strings.HasSuffix(f.Name, ".EC"):
+			signatureBlocks = append(signatureBlocks, f)
+		case strings.HasSuffix(f.Name, ".SF"):
+			if _, prs := signatureFiles[f.Name]; !prs {
+				signatureFiles[f.Name] = f
 			}
 		}
 	}
 
+	var errors []error
+	for _, blockFile := range signatureBlocks {
+		name := blockFile.Name
+		dot := strings.LastIndexByte(name, '.')
+		sfname := name[:dot] + ".SF"
+
+		sf, prs := signatureFiles[sfname]
+		if !prs {
+			continue
+		}
+
+		if err := scheme.addSignatureBlock(name, blockFile); err != nil {
+			// Behavior changed in Android 7.0 - badly formed signature blocks are no longer ignored
+			// errors = append(errors, fmt.Errorf("%s: %s", name, err.Error()))
+			// continue
+			return scheme.chain, fmt.Errorf("%s: %s", name, err.Error())
+		}
+
+		if err := scheme.addSignatureFile(sfname, sf); err != nil {
+			errors = append(errors, fmt.Errorf("%s: %s", name, err.Error()))
+			continue
+		}
+
+		// The same signatureFile can't be used by another signature block
+		delete(signatureFiles, sfname)
+	}
+
 	if err := scheme.prepForVerification(); err != nil {
-		return scheme.chain, fmt.Errorf("Can't verify: %s (%s)", err.Error(), strings.Join(errors, ";"))
+		if len(errors) == 0 {
+			return scheme.chain, fmt.Errorf("Can't verify: %s", err.Error())
+		} else {
+			return scheme.chain, fmt.Errorf("Can't verify: %s %v", err.Error(), errors)
+		}
 	}
 
 	err := scheme.verify(apk)
@@ -145,6 +182,7 @@ func (p *schemeV1) addSignatureFile(pathUpper string, f *apkparser.ZipReaderFile
 		p.sigs[prefix] = s
 	}
 
+	s.manifestFilename = pathUpper
 	s.signatureManifest, err = parseManifest(f, false)
 	return
 }
@@ -181,7 +219,7 @@ func (p *schemeV1) addSignatureBlock(pathUpper string, f *apkparser.ZipReaderFil
 		return nil
 	}
 
-	return fmt.Errorf("Failed to open %s: %v", f.Name, err)
+	return fmt.Errorf("failed to open: %v", err)
 }
 
 func (p *schemeV1) signaturePrefix(pathUpper string) string {
@@ -211,16 +249,16 @@ func (p *schemeV1) prepForVerification() error {
 func (p *schemeV1) verify(apk *apkparser.ZipReader) error {
 	var err error
 	validSignatures := map[string]*schemeV1Signature{}
-	var lastChain []*x509.Certificate
+	var signatureErrors []error
 	for sigName, sig := range p.sigs {
 		sig.chain, err = p.verifySignature(sig)
+		if sig.chain != nil {
+			p.chain = append(p.chain, sig.chain)
+		}
 		if err != nil {
-			lastChain = sig.chain
+			signatureErrors = append(signatureErrors, fmt.Errorf("%s: %s", sig.sigBlockFilename, err))
 			continue
 		}
-
-		lastChain = nil
-		p.chain = append(p.chain, sig.chain)
 
 		sm := sig.signatureManifest
 		if idList, prs := sm.main[attrAndroidApkSigned]; prs {
@@ -244,7 +282,8 @@ func (p *schemeV1) verify(apk *apkparser.ZipReader) error {
 		}
 
 		if _, prs := sm.main[attrSignatureVersion]; !prs {
-			err = fmt.Errorf("the manifest does not have %s attribute", attrSignatureVersion)
+			// Android just ignores it
+			//return fmt.Errorf("the manifest of %s does not have %s attribute", sig.manifestFilename, attrSignatureVersion)
 			continue
 		}
 
@@ -254,13 +293,13 @@ func (p *schemeV1) verify(apk *apkparser.ZipReader) error {
 			err = p.verifyManifestEntry(sm.main, attrDigestMainAttrSuffix, func(hash []byte, hasher hash.Hash) error {
 				hasher.Write(p.manifest.rawData[:p.manifest.mainAttributtesEnd])
 				if !bytes.Equal(hash, hasher.Sum(nil)) {
-					return errors.New("Invalid manifest main attributes hash!")
+					return fmt.Errorf("Invalid manifest %s main attributes hash!", sig.manifestFilename)
 				}
 				return nil
 			})
 
 			if err != nil && err != errNoKnownHashes {
-				continue
+				return fmt.Errorf("failed to verify manifest %s main attributes: %s", sig.manifestFilename, err.Error())
 			}
 		}
 
@@ -311,10 +350,11 @@ func (p *schemeV1) verify(apk *apkparser.ZipReader) error {
 	p.sigs = validSignatures
 
 	if len(validSignatures) == 0 {
-		if lastChain != nil {
-			p.chain = append(p.chain, lastChain)
-		}
 		return fmt.Errorf("No valid cert chains found, last error: %v", err)
+	}
+
+	if len(signatureErrors) != 0 {
+		return fmt.Errorf("One or more of the signatures are invalid: %v", signatureErrors)
 	}
 
 	return p.verifyMainManifest(apk)
