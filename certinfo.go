@@ -45,11 +45,15 @@ func (c byPreference) Less(i, j int) bool {
 	if !ci.NotBefore.Equal(cj.NotBefore) {
 		return ci.NotBefore.After(cj.NotBefore)
 	}
-	return ci.NotAfter.Sub(ci.NotBefore) > cj.NotAfter.Sub(cj.NotBefore)
+
+	if !ci.NotAfter.Equal(cj.NotAfter) {
+		return ci.NotAfter.Sub(ci.NotBefore) > cj.NotAfter.Sub(cj.NotBefore)
+	}
+	return bytes.Compare(ci.Raw, cj.Raw) > 0
 }
 
 // Picks the "best-looking" (most likely the correct one) certificate from the chain
-// extracted from APK. Is noop for most APKs, as they usualy contain only one certificate.
+// extracted from APK. Is noop for most APKs, as they usually contain only one certificate.
 func PickBestApkCert(chains [][]*x509.Certificate) (*CertInfo, *x509.Certificate) {
 	if len(chains) == 0 {
 		return nil, nil
