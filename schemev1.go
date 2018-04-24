@@ -390,10 +390,8 @@ func (p *schemeV1) verifyMainManifest(apk *apkparser.ZipReader) error {
 		}
 
 		var certChains [][]*x509.Certificate
-		var certFiles []string
 		for _, sig := range p.sigs {
 			if _, prs := sig.signatureManifest.entries[path]; prs {
-				certFiles = append(certFiles, sig.sigBlockFilename)
 				certChains = append(certChains, sig.chain)
 			}
 		}
@@ -670,7 +668,6 @@ func (p *schemeV1) pkixCanonicalSeq(n pkix.RDNSequence) string {
 
 				index := 0
 				bufStart := res.Len()
-				bufLen := 0
 				if val[0] == '#' {
 					res.WriteString("\\#")
 					index++
@@ -679,7 +676,7 @@ func (p *schemeV1) pkixCanonicalSeq(n pkix.RDNSequence) string {
 				for ; index < length; index++ {
 					switch val[index] {
 					case ' ':
-						bufLen = res.Len() - bufStart
+						bufLen := res.Len() - bufStart
 						if bufLen == 0 || res.Bytes()[res.Len()-1] == ' ' {
 							break
 						}

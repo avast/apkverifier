@@ -294,13 +294,13 @@ func (s *schemeV2) findSignatureSchemeV2Block(sigBlock []byte) error {
 		binary.Read(pairs, binary.LittleEndian, &id)
 		if id == apkSignatureSchemeV2BlockId {
 			s.schemeV2Block = make([]byte, entryLen-4)
-			if _, err := pairs.Read(s.schemeV2Block); err != nil {
-				return err
-			}
-			return nil
+			_, err := pairs.Read(s.schemeV2Block)
+			return err
 		}
 
-		pairs.Seek(nextEntryPos, io.SeekStart)
+		if _, err := pairs.Seek(nextEntryPos, io.SeekStart); err != nil {
+			return err
+		}
 	}
 
 	return errors.New("No APK Signature Scheme v2 block in APK Signing Block")
@@ -694,10 +694,7 @@ func (s *schemeV2) computeContentDigests(digestAlgorithms []crypto.Hash, content
 				sum := hashers[i].Sum(nil)
 				hashers[i].Reset()
 
-				dest := digestsOfChunks[i][5+chunkIndex*len(sum):]
-				for x := range sum {
-					dest[x] = sum[x]
-				}
+				copy(digestsOfChunks[i][5+chunkIndex*len(sum):], sum)
 			}
 			offset += chunkSize
 			remaining -= chunkSize
