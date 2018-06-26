@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/avast/apkverifier/signingblock"
+	"math/big"
 	"sort"
 	"time"
 )
@@ -20,6 +21,8 @@ type CertInfo struct {
 	Sha256             string
 	ValidFrom, ValidTo time.Time
 	Issuer, Subject    string
+	SignatureAlgorithm string
+	SerialNumber       *big.Int
 }
 
 type byPreference [][]*x509.Certificate
@@ -83,6 +86,8 @@ func (ci *CertInfo) Fill(cert *x509.Certificate) {
 	ci.ValidTo = cert.NotAfter
 	ci.Issuer = signingblock.PkixNameToString(&cert.Issuer)
 	ci.Subject = signingblock.PkixNameToString(&cert.Subject)
+	ci.SignatureAlgorithm = cert.SignatureAlgorithm.String()
+	ci.SerialNumber = cert.SerialNumber
 }
 
 // Returns description of the cert, like this:
