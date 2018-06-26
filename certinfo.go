@@ -6,11 +6,10 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/hex"
 	"fmt"
+	"github.com/avast/apkverifier/signingblock"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -82,8 +81,8 @@ func (ci *CertInfo) Fill(cert *x509.Certificate) {
 	ci.Sha256 = hex.EncodeToString(sha256sum[:])
 	ci.ValidFrom = cert.NotBefore
 	ci.ValidTo = cert.NotAfter
-	ci.Issuer = ci.pkixNameToString(&cert.Issuer)
-	ci.Subject = ci.pkixNameToString(&cert.Subject)
+	ci.Issuer = signingblock.PkixNameToString(&cert.Issuer)
+	ci.Subject = signingblock.PkixNameToString(&cert.Subject)
 }
 
 // Returns description of the cert, like this:
@@ -92,34 +91,4 @@ func (ci *CertInfo) Fill(cert *x509.Certificate) {
 func (ci *CertInfo) String() string {
 	return fmt.Sprintf("Cert %s, valid from %s to %s, Subject: %s, Issuer: %s",
 		ci.Sha1, ci.ValidFrom.Format(time.RFC3339), ci.ValidTo.Format(time.RFC3339), ci.Subject, ci.Issuer)
-}
-
-func (ci *CertInfo) pkixNameToString(n *pkix.Name) string {
-	var buf bytes.Buffer
-
-	if len(n.Country) != 0 {
-		fmt.Fprintf(&buf, "C=%s, ", strings.Join(n.Country, ";"))
-	}
-	if len(n.Province) != 0 {
-		fmt.Fprintf(&buf, "ST=%s, ", strings.Join(n.Province, ";"))
-	}
-	if len(n.Locality) != 0 {
-		fmt.Fprintf(&buf, "L=%s, ", strings.Join(n.Locality, ";"))
-	}
-	if len(n.Organization) != 0 {
-		fmt.Fprintf(&buf, "O=%s, ", strings.Join(n.Organization, ";"))
-	}
-	if len(n.OrganizationalUnit) != 0 {
-		fmt.Fprintf(&buf, "OU=%s, ", strings.Join(n.OrganizationalUnit, ";"))
-	}
-	if len(n.CommonName) != 0 {
-		fmt.Fprintf(&buf, "CN=%s, ", n.CommonName)
-	}
-
-	// Remove last ', '
-	if buf.Len() != 0 {
-		buf.Truncate(buf.Len() - 2)
-	}
-
-	return buf.String()
 }

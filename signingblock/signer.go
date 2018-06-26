@@ -1,0 +1,266 @@
+package signingblock
+
+import (
+	"bytes"
+	"encoding/binary"
+	"crypto/x509"
+	"crypto"
+	"fmt"
+	"math"
+)
+
+type SignatureAlgorithm int32
+const (
+	SigRsaPssWithSha256      SignatureAlgorithm = 0x0101
+	SigRsaPssWithSha512      = 0x0102
+	SigRsaPkcs1V15WithSha256 = 0x0103
+	SigRsaPkcs1V15WithSha512 = 0x0104
+	SigEcdsaWithSha256       = 0x0201
+	SigEcdsaWithSha512       = 0x0202
+	SigDsaWithSha256         = 0x0301
+)
+
+func (algo SignatureAlgorithm) String() string {
+	switch algo {
+	case SigRsaPssWithSha256:
+		return "SigRsaPssWithSha256"
+	case SigRsaPssWithSha512:
+		return "SigRsaPssWithSha512"
+	case SigRsaPkcs1V15WithSha256:
+		return "SigRsaPkcs1V15WithSha256"
+	case SigRsaPkcs1V15WithSha512:
+		return "SigRsaPkcs1V15WithSha512"
+	case SigEcdsaWithSha256:
+		return "SigEcdsaWithSha256"
+	case SigEcdsaWithSha512:
+		return "SigEcdsaWithSha512"
+	case SigDsaWithSha256:
+		return "SigDsaWithSha256"
+	}
+	return "unknown"
+}
+
+func (algo SignatureAlgorithm) isSupported() bool {
+	switch algo {
+	case SigRsaPssWithSha256, SigRsaPssWithSha512,
+		SigRsaPkcs1V15WithSha256, SigRsaPkcs1V15WithSha512,
+		SigEcdsaWithSha256, SigEcdsaWithSha512,
+		SigDsaWithSha256:
+		return true
+	default:
+		return false
+	}
+}
+
+func (algo SignatureAlgorithm) getDigestType() crypto.Hash {
+	switch algo {
+	case SigRsaPssWithSha256, SigRsaPkcs1V15WithSha256, SigEcdsaWithSha256, SigDsaWithSha256:
+		return crypto.SHA256
+	case SigRsaPssWithSha512, SigRsaPkcs1V15WithSha512, SigEcdsaWithSha512:
+		return crypto.SHA512
+	default:
+		panic(fmt.Sprintf("Unknown signature algorithm 0x%x", algo))
+	}
+}
+
+func (algo SignatureAlgorithm) getMinSdkVersion() int {
+	switch algo {
+	case SigRsaPssWithSha512, SigRsaPkcs1V15WithSha256, SigRsaPkcs1V15WithSha512,
+		SigEcdsaWithSha256, SigEcdsaWithSha512, SigDsaWithSha256:
+		return 27
+	default:
+		return math.MaxInt32
+	}
+}
+
+
+type signerContext struct {
+	result *VerificationResult
+
+	bestAlgo SignatureAlgorithm
+	bestAlgoSignature []byte
+	signaturesAlgos []SignatureAlgorithm
+
+	publicKeyBytes []byte
+}
+
+func (s *signerContext) parseSignatures(signaturesSlice *bytes.Buffer) (success bool) {
+	s.bestAlgo = -1
+	signatureCount := 0
+	for signaturesSlice.Len() > 0 {
+		signatureCount++
+
+		signature, err := getLenghtPrefixedSlice(signaturesSlice)
+		if err != nil {
+			s.result.addError("failed to parse signature record #%d: %s", signatureCount, err.Error())
+			return
+		}
+
+		if signature.Len() < 8 {
+			s.result.addError("signature record %d is too short", signatureCount)
+			return
+		}
+
+		var algo SignatureAlgorithm
+		if err := binary.Read(signature, binary.LittleEndian, &algo); err != nil {
+			s.result.addError("failed to parse signature record #%d: %s", signatureCount, err.Error())
+			return
+		}
+
+		s.signaturesAlgos = append(s.signaturesAlgos, algo)
+		if !algo.isSupported() {
+			s.result.addWarning("signature %d is using unknown algorithm 0x%04x", signatureCount, uint32(algo))
+			continue
+		}
+
+		if s.bestAlgo == -1 || s.compareAlgos(algo, s.bestAlgo) > 0 {
+			s.bestAlgo = algo
+			sigBytes, err := getLenghtPrefixedSlice(signature)
+			if err != nil {
+				s.result.addError("failed to read signature bytes from signature record #%d: %s", signatureCount, err.Error())
+				return
+			}
+			s.bestAlgoSignature = sigBytes.Bytes()
+		}
+	}
+
+	if s.bestAlgo == -1 {
+		if signatureCount == 0 {
+			s.result.addError("no signatures found")
+		} else {
+			s.result.addError("no supported signatures found")
+		}
+		return
+	}
+
+	return true
+}
+
+func (s *signerContext) parsePublicKey(publicKeySlice *bytes.Buffer, signedDataBytes []byte) (success bool) {
+	s.publicKeyBytes = publicKeySlice.Bytes()
+
+	publicKey, err := x509.ParsePKIXPublicKey(s.publicKeyBytes)
+	if err != nil {
+		s.result.addError("failed to parse public key: %s", err.Error())
+		return
+	}
+
+	err = verifySignature(publicKey, s.bestAlgo, signedDataBytes, s.bestAlgoSignature)
+	if err != nil {
+		s.result.addError("failed to verify signature of type 0x%x: %s", s.bestAlgo, err.Error())
+		return
+	}
+
+	return true
+}
+
+func (s *signerContext) parseCertificates(certificatesSlice *bytes.Buffer) (mainCert *x509.Certificate, success bool) {
+	certAdder := s.result.getCertAdder()
+	certificateCount := 0
+	for certificatesSlice.Len() > 0 {
+		certificateCount++
+		encodedCert, err := getLenghtPrefixedSlice(certificatesSlice)
+		if err != nil {
+			s.result.addError("failed to read certificate #%d: %s", certificateCount, err.Error())
+			return
+		}
+
+		cert, err := x509.ParseCertificate(encodedCert.Bytes())
+		if err != nil {
+			s.result.addError("Failed to parse certificate #%d: %s", certificateCount, err.Error())
+			return
+		}
+		certAdder.append(cert)
+	}
+
+	if len(certAdder.Certs) == 0 {
+		s.result.addError("No certificates listed.")
+		return
+	}
+
+	mainCert = certAdder.Certs[0]
+	if !bytes.Equal(mainCert.RawSubjectPublicKeyInfo, s.publicKeyBytes) {
+		s.result.addError("Public key mismatch between certificate and signature record")
+		return
+	}
+
+	return mainCert, true
+}
+
+func (s *signerContext) parseDigests(digestsSlice *bytes.Buffer, contentDigests map[crypto.Hash][]byte) (success bool) {
+	var contentDigest []byte
+	var digestSigAlgorithms []SignatureAlgorithm
+	digestCount := 0
+	for digestsSlice.Len() > 0 {
+		digestCount++
+
+		digest, err := getLenghtPrefixedSlice(digestsSlice)
+		if err != nil {
+			s.result.addError("failed to parse digest #%d: %s", digestCount, err.Error())
+			return
+		} else if digest.Len() < 8 {
+			s.result.addError("failed to parse digest #%d: record too short", digestCount)
+			return
+		}
+
+		var sigAlgorithm SignatureAlgorithm
+		binary.Read(digest, binary.LittleEndian, &sigAlgorithm)
+		digestSigAlgorithms = append(digestSigAlgorithms, sigAlgorithm)
+		if sigAlgorithm == s.bestAlgo {
+			cd, err := getLenghtPrefixedSlice(digest)
+			if err != nil {
+				s.result.addError("failed to read content digest for digest #%d: %s", digestCount, err.Error())
+				return
+			}
+			contentDigest = cd.Bytes()
+		}
+	}
+
+	algosEqual := len(digestSigAlgorithms) == len(s.signaturesAlgos)
+	for i := 0; algosEqual && i < len(digestSigAlgorithms); i++ {
+		algosEqual = digestSigAlgorithms[i] == s.signaturesAlgos[i]
+	}
+
+	if !algosEqual {
+		s.result.addError("signature algorithms don't match between digests and signatures records")
+		return
+	}
+
+	digestAlgorithm := s.bestAlgo.getDigestType()
+	previousSignerDigest := contentDigests[digestAlgorithm]
+	contentDigests[digestAlgorithm] = contentDigest
+	if previousSignerDigest != nil && !bytes.Equal(previousSignerDigest, contentDigest) {
+		s.result.addError("0x%x contents digest does not match the digest specified by a preceding signer", digestAlgorithm)
+		return
+	}
+
+	return true
+}
+
+func (s *signerContext)  compareAlgos(a, b SignatureAlgorithm) int {
+	digest1 := a.getDigestType()
+	digest2 := b.getDigestType()
+
+	switch digest1 {
+	case crypto.SHA256:
+		switch digest2 {
+		case crypto.SHA256:
+			return 0
+		case crypto.SHA512:
+			return -1
+		default:
+			panic(fmt.Sprintf("Unknown digest2: %d", digest2))
+		}
+	case crypto.SHA512:
+		switch digest2 {
+		case crypto.SHA256:
+			return 1
+		case crypto.SHA512:
+			return 0
+		default:
+			panic(fmt.Sprintf("Unknown digest2: %d", digest2))
+		}
+	default:
+		panic(fmt.Sprintf("Unknown digest1: %d", digest1))
+	}
+}

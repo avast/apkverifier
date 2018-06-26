@@ -7,12 +7,14 @@ import (
 	"crypto/x509"
 	"errors"
 	"github.com/avast/apkparser"
+	"github.com/avast/apkverifier/signingblock"
 )
 
 // Contains result of Apk verification
 type Result struct {
-	UsingSchemeV2 bool
-	SignerCerts   [][]*x509.Certificate
+	SigningSchemeId    int
+	SignerCerts        [][]*x509.Certificate
+	SigningBlockResult *signingblock.VerificationResult
 }
 
 // Returned from the Verify method if the file starts with the DEX magic value,
@@ -39,10 +41,13 @@ const (
 // This method will not close it.
 func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err error) {
 	var fileMagic uint32
-	res.SignerCerts, fileMagic, err = verifySchemeV2(path)
-	if err == nil || !isSchemeV2NotFoundError(err) {
-		res.UsingSchemeV2 = true
+	res.SigningBlockResult, fileMagic, err = signingblock.VerifySigningBlock(path)
+	if err == nil || !signingblock.IsSigningBlockNotFoundError(err) {
+		res.SignerCerts = res.SigningBlockResult.Certs
+		res.SigningSchemeId = res.SigningBlockResult.SchemeId
 		return
+	} else {
+		res.SigningSchemeId = 1
 	}
 
 	if optionalZip == nil {

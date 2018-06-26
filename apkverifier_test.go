@@ -12,7 +12,7 @@ func Example() {
 		fmt.Fprintf(os.Stderr, "Verification failed: %s\n", err.Error())
 	}
 
-	fmt.Printf("Uses scheme v2: %v\n", res.UsingSchemeV2)
+	fmt.Printf("Verification scheme used: v%d\n", res.SigningSchemeId)
 	cert, _ := apkverifier.PickBestApkCert(res.SignerCerts)
 	if cert == nil {
 		fmt.Printf("No certificate found.\n")
