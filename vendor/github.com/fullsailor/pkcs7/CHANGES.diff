@@ -27,7 +27,7 @@ index 19a0f51..7cf9e8e 100644
  		{[]byte{0x30, 0x03, 0x01, 0x02}, "length is more than available data"},
  	}
 diff --git a/pkcs7.go b/pkcs7.go
-index 8d5af85..4ae9631 100644
+index 8d5af85..2aa72fd 100644
 --- a/pkcs7.go
 +++ b/pkcs7.go
 @@ -2,6 +2,7 @@
@@ -57,7 +57,7 @@ index 8d5af85..4ae9631 100644
  
  	_ "crypto/sha1" // for crypto.SHA1
  )
-@@ -25,7 +29,7 @@ import (
+@@ -25,9 +29,10 @@ import (
  // PKCS7 Represents a PKCS7 structure
  type PKCS7 struct {
  	Content      []byte
@@ -65,8 +65,54 @@ index 8d5af85..4ae9631 100644
 +	Certificates []*go_x509.Certificate
  	CRLs         []pkix.CertificateList
  	Signers      []signerInfo
++	ContentType  asn1.ObjectIdentifier
  	raw          interface{}
-@@ -147,6 +151,33 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
+ }
+ 
+@@ -92,11 +97,21 @@ type attribute struct {
+ 	Value asn1.RawValue `asn1:"set"`
+ }
+ 
++type SignerAttribute struct {
++	Type  asn1.ObjectIdentifier
++	Value asn1.RawValue `asn1:"set"`
++}
++
+ type issuerAndSerial struct {
+ 	IssuerName   asn1.RawValue
+ 	SerialNumber *big.Int
+ }
+ 
++type IssuerAndSerial struct {
++	IssuerName   asn1.RawValue
++	SerialNumber *big.Int
++}
++
+ // MessageDigestMismatchError is returned when the signer data digest does not
+ // match the computed digest for the contained content
+ type MessageDigestMismatchError struct {
+@@ -118,6 +133,16 @@ type signerInfo struct {
+ 	UnauthenticatedAttributes []attribute `asn1:"optional,tag:1"`
+ }
+ 
++type SignerInfo struct {
++	Version                   int `asn1:"default:1"`
++	IssuerAndSerialNumber     IssuerAndSerial
++	DigestAlgorithm           pkix.AlgorithmIdentifier
++	AuthenticatedAttributes   []SignerAttribute `asn1:"optional,tag:0"`
++	DigestEncryptionAlgorithm pkix.AlgorithmIdentifier
++	EncryptedDigest           []byte
++	UnauthenticatedAttributes []SignerAttribute `asn1:"optional,tag:1"`
++}
++
+ // Parse decodes a DER encoded PKCS7 package
+ func Parse(data []byte) (p7 *PKCS7, err error) {
+ 	if len(data) == 0 {
+@@ -144,9 +169,37 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
+ 	case info.ContentType.Equal(oidEnvelopedData):
+ 		return parseEnvelopedData(info.Content.Bytes)
+ 	}
++
  	return nil, ErrUnsupportedContentType
  }
  
@@ -100,7 +146,7 @@ index 8d5af85..4ae9631 100644
  func parseSignedData(data []byte) (*PKCS7, error) {
  	var sd signedData
  	asn1.Unmarshal(data, &sd)
-@@ -174,9 +205,15 @@ func parseSignedData(data []byte) (*PKCS7, error) {
+@@ -174,11 +227,18 @@ func parseSignedData(data []byte) (*PKCS7, error) {
  		// assuming this is tag 04
  		content = compound.Bytes
  	}
@@ -116,8 +162,11 @@ index 8d5af85..4ae9631 100644
 +		Certificates: goCerts,
  		CRLs:         sd.CRLs,
  		Signers:      sd.SignerInfos,
++		ContentType:  sd.ContentInfo.ContentType,
  		raw:          sd}, nil
-@@ -254,7 +291,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo) error {
+ }
+ 
+@@ -254,7 +314,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo) error {
  		return errors.New("pkcs7: No certificate for signer")
  	}
  
@@ -126,7 +175,7 @@ index 8d5af85..4ae9631 100644
  	return cert.CheckSignature(algo, signedData, signer.EncryptedDigest)
  }
  
-@@ -277,7 +314,7 @@ var (
+@@ -277,7 +337,7 @@ var (
  	oidEncryptionAlgorithmRSA = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
  )
  
@@ -135,7 +184,7 @@ index 8d5af85..4ae9631 100644
  	for _, cert := range certs {
  		if isCertMatchForIssuerAndSerial(cert, ias) {
  			return cert
-@@ -296,7 +333,7 @@ func getHashForOID(oid asn1.ObjectIdentifier) (crypto.Hash, error) {
+@@ -296,7 +356,7 @@ func getHashForOID(oid asn1.ObjectIdentifier) (crypto.Hash, error) {
  
  // GetOnlySigner returns an x509.Certificate for the first signer of the signed
  // data payload. If there are more or less than one signer, nil is returned
@@ -144,7 +193,7 @@ index 8d5af85..4ae9631 100644
  	if len(p7.Signers) != 1 {
  		return nil
  	}
-@@ -311,7 +348,7 @@ var ErrUnsupportedAlgorithm = errors.New("pkcs7: cannot decrypt data: only RSA,
+@@ -311,7 +371,7 @@ var ErrUnsupportedAlgorithm = errors.New("pkcs7: cannot decrypt data: only RSA,
  var ErrNotEncryptedContent = errors.New("pkcs7: content data is a decryptable data type")
  
  // Decrypt decrypts encrypted content info for recipient cert and private key
@@ -153,7 +202,7 @@ index 8d5af85..4ae9631 100644
  	data, ok := p7.raw.(envelopedData)
  	if !ok {
  		return nil, ErrNotEncryptedContent
-@@ -430,7 +467,7 @@ func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
+@@ -430,7 +490,7 @@ func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
  	return plaintext, nil
  }
  
@@ -162,7 +211,7 @@ index 8d5af85..4ae9631 100644
  	for _, recp := range recipients {
  		if isCertMatchForIssuerAndSerial(cert, recp.IssuerAndSerialNumber) {
  			return recp
-@@ -439,7 +476,7 @@ func selectRecipientForCertificate(recipients []recipientInfo, cert *x509.Certif
+@@ -439,7 +499,7 @@ func selectRecipientForCertificate(recipients []recipientInfo, cert *x509.Certif
  	return recipientInfo{}
  }
  
@@ -171,6 +220,73 @@ index 8d5af85..4ae9631 100644
  	return cert.SerialNumber.Cmp(ias.SerialNumber) == 0 && bytes.Compare(cert.RawIssuer, ias.IssuerName.FullBytes) == 0
  }
  
+@@ -938,3 +998,66 @@ func encryptKey(key []byte, recipient *x509.Certificate) ([]byte, error) {
+ 	}
+ 	return nil, ErrUnsupportedAlgorithm
+ }
++
++// Author of this library is a gosh-darned ass.
++func (p7 *PKCS7) GetSignerInfos() []SignerInfo {
++	res := make([]SignerInfo, len(p7.Signers))
++	for i := range p7.Signers {
++		s := &p7.Signers[i]
++
++		AuthenticatedAttributes := make([]SignerAttribute, len(s.AuthenticatedAttributes))
++		for i := range s.AuthenticatedAttributes {
++			AuthenticatedAttributes[i] = SignerAttribute(s.AuthenticatedAttributes[i])
++		}
++
++		UnauthenticatedAttributes := make([]SignerAttribute, len(s.UnauthenticatedAttributes))
++		for i := range s.UnauthenticatedAttributes {
++			UnauthenticatedAttributes[i] = SignerAttribute(s.UnauthenticatedAttributes[i])
++		}
++		res[i] = SignerInfo{
++			s.Version,
++			IssuerAndSerial(s.IssuerAndSerialNumber),
++			s.DigestAlgorithm,
++			AuthenticatedAttributes,
++			s.DigestEncryptionAlgorithm,
++			s.EncryptedDigest,
++			UnauthenticatedAttributes,
++		}
++	}
++	return res
++}
++
++func (si *SignerInfo) UnmarshalSignedAttribute(attributeType asn1.ObjectIdentifier, out interface{}) error {
++	found := false
++	for _, attr := range si.AuthenticatedAttributes {
++		if attr.Type.Equal(attributeType) {
++			if found {
++				return errors.New("pkcs7: attribute type has multiple values")
++			}
++
++			found = true
++			if _, err := asn1.Unmarshal(attr.Value.Bytes, out); err != nil {
++				return err
++			}
++		}
++	}
++
++	if !found {
++		return errors.New("pkcs7: attribute type not in attributes")
++	}
++	return nil
++}
++
++func (si *SignerInfo) MarshalAuthenticatedAttributes() ([]byte, error) {
++	encodedAttributes, err := asn1.Marshal(struct {
++		A []SignerAttribute `asn1:"set"`
++	}{A: si.AuthenticatedAttributes})
++	if err != nil {
++		return nil, err
++	}
++
++	// Remove the leading sequence octets
++	var raw asn1.RawValue
++	asn1.Unmarshal(encodedAttributes, &raw)
++	return raw.Bytes, nil
++}
 diff --git a/pkcs7_test.go b/pkcs7_test.go
 index cbe2c5c..740543f 100644
 --- a/pkcs7_test.go

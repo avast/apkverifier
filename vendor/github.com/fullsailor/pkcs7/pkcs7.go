@@ -32,6 +32,7 @@ type PKCS7 struct {
 	Certificates []*go_x509.Certificate
 	CRLs         []pkix.CertificateList
 	Signers      []signerInfo
+	ContentType  asn1.ObjectIdentifier
 	raw          interface{}
 }
 
@@ -96,7 +97,17 @@ type attribute struct {
 	Value asn1.RawValue `asn1:"set"`
 }
 
+type SignerAttribute struct {
+	Type  asn1.ObjectIdentifier
+	Value asn1.RawValue `asn1:"set"`
+}
+
 type issuerAndSerial struct {
+	IssuerName   asn1.RawValue
+	SerialNumber *big.Int
+}
+
+type IssuerAndSerial struct {
 	IssuerName   asn1.RawValue
 	SerialNumber *big.Int
 }
@@ -120,6 +131,16 @@ type signerInfo struct {
 	DigestEncryptionAlgorithm pkix.AlgorithmIdentifier
 	EncryptedDigest           []byte
 	UnauthenticatedAttributes []attribute `asn1:"optional,tag:1"`
+}
+
+type SignerInfo struct {
+	Version                   int `asn1:"default:1"`
+	IssuerAndSerialNumber     IssuerAndSerial
+	DigestAlgorithm           pkix.AlgorithmIdentifier
+	AuthenticatedAttributes   []SignerAttribute `asn1:"optional,tag:0"`
+	DigestEncryptionAlgorithm pkix.AlgorithmIdentifier
+	EncryptedDigest           []byte
+	UnauthenticatedAttributes []SignerAttribute `asn1:"optional,tag:1"`
 }
 
 // Parse decodes a DER encoded PKCS7 package
@@ -148,6 +169,7 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 	case info.ContentType.Equal(oidEnvelopedData):
 		return parseEnvelopedData(info.Content.Bytes)
 	}
+
 	return nil, ErrUnsupportedContentType
 }
 
@@ -216,6 +238,7 @@ func parseSignedData(data []byte) (*PKCS7, error) {
 		Certificates: goCerts,
 		CRLs:         sd.CRLs,
 		Signers:      sd.SignerInfos,
+		ContentType:  sd.ContentInfo.ContentType,
 		raw:          sd}, nil
 }
 
@@ -974,4 +997,67 @@ func encryptKey(key []byte, recipient *x509.Certificate) ([]byte, error) {
 		return rsa.EncryptPKCS1v15(rand.Reader, pub, key)
 	}
 	return nil, ErrUnsupportedAlgorithm
+}
+
+// Author of this library is a gosh-darned ass.
+func (p7 *PKCS7) GetSignerInfos() []SignerInfo {
+	res := make([]SignerInfo, len(p7.Signers))
+	for i := range p7.Signers {
+		s := &p7.Signers[i]
+
+		AuthenticatedAttributes := make([]SignerAttribute, len(s.AuthenticatedAttributes))
+		for i := range s.AuthenticatedAttributes {
+			AuthenticatedAttributes[i] = SignerAttribute(s.AuthenticatedAttributes[i])
+		}
+
+		UnauthenticatedAttributes := make([]SignerAttribute, len(s.UnauthenticatedAttributes))
+		for i := range s.UnauthenticatedAttributes {
+			UnauthenticatedAttributes[i] = SignerAttribute(s.UnauthenticatedAttributes[i])
+		}
+		res[i] = SignerInfo{
+			s.Version,
+			IssuerAndSerial(s.IssuerAndSerialNumber),
+			s.DigestAlgorithm,
+			AuthenticatedAttributes,
+			s.DigestEncryptionAlgorithm,
+			s.EncryptedDigest,
+			UnauthenticatedAttributes,
+		}
+	}
+	return res
+}
+
+func (si *SignerInfo) UnmarshalSignedAttribute(attributeType asn1.ObjectIdentifier, out interface{}) error {
+	found := false
+	for _, attr := range si.AuthenticatedAttributes {
+		if attr.Type.Equal(attributeType) {
+			if found {
+				return errors.New("pkcs7: attribute type has multiple values")
+			}
+
+			found = true
+			if _, err := asn1.Unmarshal(attr.Value.Bytes, out); err != nil {
+				return err
+			}
+		}
+	}
+
+	if !found {
+		return errors.New("pkcs7: attribute type not in attributes")
+	}
+	return nil
+}
+
+func (si *SignerInfo) MarshalAuthenticatedAttributes() ([]byte, error) {
+	encodedAttributes, err := asn1.Marshal(struct {
+		A []SignerAttribute `asn1:"set"`
+	}{A: si.AuthenticatedAttributes})
+	if err != nil {
+		return nil, err
+	}
+
+	// Remove the leading sequence octets
+	var raw asn1.RawValue
+	asn1.Unmarshal(encodedAttributes, &raw)
+	return raw.Bytes, nil
 }

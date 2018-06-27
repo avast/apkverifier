@@ -38,6 +38,9 @@ const (
 	schemeIdV3 = 3
 
 	maxChunkSize = 1024 * 1024
+
+	sdkVersionN = 24
+	sdkVersionP = 28
 )
 
 var (
@@ -47,7 +50,7 @@ var (
 
 type signatureBlockScheme interface {
 	parseSigners(block *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult)
-	finalizeResult(result *VerificationResult)
+	finalizeResult(minSdkVersion, maxSdkVersion int32, result *VerificationResult)
 }
 
 type signingBlock struct {
@@ -72,7 +75,11 @@ func IsSigningBlockNotFoundError(err error) bool {
 	return ok
 }
 
-func VerifySigningBlock(path string) (res *VerificationResult, magic uint32, err error) {
+func VerifySigningBlock(path string, minSdkVersion, maxSdkVersion int32) (res *VerificationResult, magic uint32, err error) {
+	if maxSdkVersion < sdkVersionN {
+		return nil, 0, &signingBlockNotFoundError{errors.New("unsupported SDK version, requires at least N")}
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, 0, err
@@ -116,7 +123,7 @@ func VerifySigningBlock(path string) (res *VerificationResult, magic uint32, err
 		return
 	}
 
-	schemeId, block, err := s.findSignatureBlocks(sigBlock)
+	schemeId, block, err := s.findSignatureBlocks(sigBlock, maxSdkVersion)
 	if err != nil {
 		err = &signingBlockNotFoundError{err}
 		return
@@ -136,7 +143,7 @@ func VerifySigningBlock(path string) (res *VerificationResult, magic uint32, err
 		panic("unhandled")
 	}
 
-	s.verify(scheme, block, res)
+	s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
 	err = res.GetLastError()
 	return
 }
@@ -174,7 +181,7 @@ func (s *signingBlock) findEocdMaxCommentSize(maxCommentSize int) error {
 	}
 	emptyCommentStart := len(buf) - eocdRecMinSize
 
-	for commentSize := 0; commentSize < maxCommentSize; commentSize++ {
+	for commentSize := 0; commentSize <= maxCommentSize; commentSize++ {
 		pos := emptyCommentStart - commentSize
 		if binary.LittleEndian.Uint32(buf[pos:pos+4]) == eocdRecMagic {
 			recordCommentSize := binary.LittleEndian.Uint16(buf[pos+eocdCommentSizeOffset:])
@@ -274,7 +281,7 @@ func (s *signingBlock) findApkSigningBlock() (block []byte, offset int64, err er
 	return
 }
 
-func (s *signingBlock) findSignatureBlocks(sigBlock []byte) (schemeId int, block []byte, err error) {
+func (s *signingBlock) findSignatureBlocks(sigBlock []byte, maxSdkVersion int32) (schemeId int, block []byte, err error) {
 	pairs := bytes.NewReader(sigBlock[8 : len(sigBlock)-24])
 	entryCount := 0
 
@@ -307,24 +314,24 @@ func (s *signingBlock) findSignatureBlocks(sigBlock []byte) (schemeId int, block
 		}
 
 		switch id {
-		case blockIdSchemeV2, blockIdSchemeV3:
-			var newId int
-			switch id {
-			case blockIdSchemeV2:
-				newId = schemeIdV2
-			case blockIdSchemeV3:
-				newId = schemeIdV3
-			default:
-				panic("unhandled")
-			}
-
-			if newId > schemeId {
+		case blockIdSchemeV3:
+			if maxSdkVersion >= sdkVersionP && schemeIdV3 > schemeId {
 				block = make([]byte, entryLen-4)
 				if _, err = pairs.Read(block); err != nil {
 					return
 				}
-				schemeId = newId
+				schemeId = schemeIdV3
 			}
+		case blockIdSchemeV2:
+			if schemeIdV2 > schemeId {
+				block = make([]byte, entryLen-4)
+				if _, err = pairs.Read(block); err != nil {
+					return
+				}
+				schemeId = schemeIdV2
+			}
+		case blockIdVerityPadding:
+			// TODO: NYI
 		}
 
 		if _, err = pairs.Seek(nextEntryPos, io.SeekStart); err != nil {
@@ -338,7 +345,7 @@ func (s *signingBlock) findSignatureBlocks(sigBlock []byte) (schemeId int, block
 	return
 }
 
-func (s *signingBlock) verify(scheme signatureBlockScheme, block []byte, res *VerificationResult) {
+func (s *signingBlock) verify(scheme signatureBlockScheme, block []byte, minSdkVersion, maxSdkVersion int32, res *VerificationResult) {
 	contentDigests := make(map[crypto.Hash][]byte)
 	signatureBlock := bytes.NewBuffer(block)
 
@@ -361,7 +368,7 @@ func (s *signingBlock) verify(scheme signatureBlockScheme, block []byte, res *Ve
 		return
 	}
 
-	scheme.finalizeResult(res)
+	scheme.finalizeResult(minSdkVersion, maxSdkVersion, res)
 }
 
 func (s *signingBlock) verifyIntegrity(expectedDigests map[crypto.Hash][]byte, result *VerificationResult) bool {

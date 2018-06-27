@@ -40,20 +40,14 @@ func verifySignature(publicKey interface{}, algo SignatureAlgorithm, signedDataB
 	switch algo {
 	case SigRsaPssWithSha256:
 		hashed := sha256.Sum256(signedDataBytes)
-		err := rsa.VerifyPSS(publicKey.(*rsa.PublicKey), crypto.SHA256, hashed[:], signature, &rsa.PSSOptions{
+		return rsa.VerifyPSS(publicKey.(*rsa.PublicKey), crypto.SHA256, hashed[:], signature, &rsa.PSSOptions{
 			SaltLength: 256 / 8,
 		})
-		if err != nil { // FIXME: not tested
-			panic(fmt.Sprintf("verification failed on untested algo: %s", err.Error()))
-		}
 	case SigRsaPssWithSha512:
 		hashed := sha512.Sum512(signedDataBytes)
-		err := rsa.VerifyPSS(publicKey.(*rsa.PublicKey), crypto.SHA512, hashed[:], signature, &rsa.PSSOptions{
+		return rsa.VerifyPSS(publicKey.(*rsa.PublicKey), crypto.SHA512, hashed[:], signature, &rsa.PSSOptions{
 			SaltLength: 512 / 8,
 		})
-		if err != nil { // FIXME: not tested
-			panic(fmt.Sprintf("verification failed on untested algo: %s", err.Error()))
-		}
 	case SigRsaPkcs1V15WithSha256:
 		hashed := sha256.Sum256(signedDataBytes)
 		return rsa.VerifyPKCS1v15(publicKey.(*rsa.PublicKey), crypto.SHA256, hashed[:], signature)

@@ -2,19 +2,19 @@ package signingblock
 
 import (
 	"bytes"
-	"io"
 	"crypto/sha1"
 	"crypto/x509"
-	"fmt"
 	"encoding/hex"
+	"fmt"
+	"io"
 )
 
 type V3LineageSigningCertificateNode struct {
-	SigningCert *x509.Certificate
+	SigningCert        *x509.Certificate
 	ParentSigAlgorithm SignatureAlgorithm
-	SigAlgorithm SignatureAlgorithm
-	Signature []byte
-	Flags int32
+	SigAlgorithm       SignatureAlgorithm
+	Signature          []byte
+	Flags              int32
 }
 
 func (n *V3LineageSigningCertificateNode) Equal(o *V3LineageSigningCertificateNode) bool {
@@ -51,12 +51,12 @@ func (n *V3LineageSigningCertificateNode) Dump(w io.Writer) error {
 		return err
 	}
 
-	_, err := fmt.Fprintf(w, "  ValidFrom: %v\n  ValidTo: %d\n", n.SigningCert.NotBefore, n.SigningCert.NotAfter)
+	_, err := fmt.Fprintf(w, "  ValidFrom: %v\n  ValidTo: %v\n", n.SigningCert.NotBefore, n.SigningCert.NotAfter)
 	if err != nil {
 		return err
 	}
 
-	_, err = fmt.Fprintf(w, "  Issuer: %s\n  Subject: %s\n", PkixNameToString(&n.SigningCert.Issuer), PkixNameToString(&n.SigningCert.Subject));
+	_, err = fmt.Fprintf(w, "  Issuer: %s\n  Subject: %s\n", PkixNameToString(&n.SigningCert.Issuer), PkixNameToString(&n.SigningCert.Subject))
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func lineageCalculateMinSdkVersion(nodes V3LineageSigningCertificateNodeList) in
 
 type V3SigningLineage struct {
 	MinSdkVersion int
-	Nodes V3LineageSigningCertificateNodeList
+	Nodes         V3LineageSigningCertificateNodeList
 }
 
 func (l *V3SigningLineage) getSubLineage(cert *x509.Certificate) (*V3SigningLineage, error) {
@@ -117,7 +117,7 @@ func (l *V3SigningLineage) getSubLineage(cert *x509.Certificate) (*V3SigningLine
 		if n.SigningCert.Equal(cert) {
 			return &V3SigningLineage{
 				MinSdkVersion: l.MinSdkVersion,
-				Nodes: l.Nodes[0:i+1],
+				Nodes:         l.Nodes[0 : i+1],
 			}, nil
 		}
 	}

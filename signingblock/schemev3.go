@@ -48,7 +48,7 @@ func (s *schemeV3) 	parseSigners(block *bytes.Buffer, contentDigests map[crypto.
 	}
 }
 
-func (s *schemeV3) finalizeResult(result *VerificationResult) {
+func (s *schemeV3) finalizeResult(requestedMinSdkVersion, requestedMaxSdkVersion int32, result *VerificationResult) {
 	sort.Slice(s.signers, func(i, j int) bool {
 		return s.signers[i].minSdkVersion < s.signers[j].minSdkVersion
 	})
@@ -78,9 +78,9 @@ func (s *schemeV3) finalizeResult(result *VerificationResult) {
 	}
 
 	// We don't handle sdk versions in apkverifier...
-	/*if firstMin > requestedMinSdkVersion || lastMax < requestedMaxSdkVersion {
+	if firstMin > requestedMinSdkVersion || lastMax < requestedMaxSdkVersion {
 		result.addError("missing sdk versions, supports only <%d;%d>", firstMin, lastMax)
-	}*/
+	}
 
 	var err error
 	result.SigningLineage, err = s.consolidateLineages(lineages)
@@ -313,7 +313,7 @@ func (s *schemeV3) readSigningCertificateLineage(lineageSlice *bytes.Buffer) (V3
 
 		for _, histCert := range certHistory {
 			if histCert.Equal(lastCert) {
-				return nil, fmt.Errorf("encountered duplicate entries at node #d, signing certificates should be unique.", nodeCount)
+				return nil, fmt.Errorf("encountered duplicate entries at node #%d, signing certificates should be unique.", nodeCount)
 			}
 		}
 

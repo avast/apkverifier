@@ -34,7 +34,7 @@ func (s *schemeV2) 	parseSigners(block *bytes.Buffer, contentDigests map[crypto.
 	}
 }
 
-func (s *schemeV2) finalizeResult(result *VerificationResult) {
+func (s *schemeV2) finalizeResult(minSdkVersion, maxSdkVersion int32, result *VerificationResult) {
 
 }
 

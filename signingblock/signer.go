@@ -67,7 +67,7 @@ func (algo SignatureAlgorithm) getMinSdkVersion() int {
 	switch algo {
 	case SigRsaPssWithSha512, SigRsaPkcs1V15WithSha256, SigRsaPkcs1V15WithSha512,
 		SigEcdsaWithSha256, SigEcdsaWithSha512, SigDsaWithSha256:
-		return 27
+		return sdkVersionN
 	default:
 		return math.MaxInt32
 	}
