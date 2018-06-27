@@ -13,7 +13,7 @@ const (
 type schemeV2 struct {
 }
 
-func (s *schemeV2) 	parseSigners(block *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult) {
+func (s *schemeV2) parseSigners(block *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult) {
 	signers, err := getLenghtPrefixedSlice(block)
 	if err != nil {
 		result.addError("failed to read list of signers: %s", err.Error())
@@ -46,7 +46,7 @@ func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[cr
 	}
 	signedDataBytes := signedData.Bytes()
 
-	ctx := signerContext{ result:result }
+	ctx := signerContext{result: result}
 
 	// Parse signatures
 	signaturesSlice, err := getLenghtPrefixedSlice(signerBlock)
@@ -107,13 +107,13 @@ func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[cr
 
 		attribute, err := getLenghtPrefixedSlice(additionalAttributes)
 		if err != nil {
-			result.addError("failed to read additional attribute %d: %s", err.Error())
+			result.addError("failed to read additional attribute %d: %s", additionalAttributeCount, err.Error())
 			return
 		}
 
 		var id uint32
 		if err := binary.Read(attribute, binary.LittleEndian, &id); err != nil {
-			result.addError("failed to read additional attribute %d's id: %s", err.Error())
+			result.addError("failed to read additional attribute %d's id: %s", additionalAttributeCount, err.Error())
 			return
 		}
 
@@ -121,7 +121,7 @@ func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[cr
 		case attrV2StrippingProtection:
 			var strippedSchemeId int32
 			if err := binary.Read(attribute, binary.LittleEndian, &strippedSchemeId); err != nil {
-				result.addError("failed to read additional attribute %d's strippedSchemeId: %s", err.Error())
+				result.addError("failed to read additional attribute %d's strippedSchemeId: %s", additionalAttributeCount, err.Error())
 				return
 			}
 
