@@ -212,7 +212,7 @@ func (s *schemeV3) verifySigner(signerBlock *bytes.Buffer, contentDigests map[cr
 		case attrV3ProofOfRotation:
 			nodes, err := s.readSigningCertificateLineage(attribute)
 			if err != nil {
-				result.addError("failed to read signing certificate lineage attribute: %s", additionalAttributeCount, err.Error())
+				result.addError("failed to read signing certificate lineage attribute: %s", err.Error())
 				return
 			}
 

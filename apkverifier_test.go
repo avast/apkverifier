@@ -571,25 +571,20 @@ func TestV1SignedAttrsWrongSignature(t *testing.T) {
 }
 
 func assertVerifiedForEach(t *testing.T, format string, names []string) {
-	t.Helper()
 	assertVerifiedForEachSdk(t, format, names, -1, math.MaxInt32)
 }
 
 func assertVerifiedForEachSdk(t *testing.T, format string, names []string, minSdkVersion, maxSdkVersion int32) {
-	t.Helper()
 	for _, n := range names {
 		assertVerifiedSdk(t, fmt.Sprintf(format, n), minSdkVersion, maxSdkVersion)
 	}
 }
 
 func assertVerified(t *testing.T, name string) apkverifier.Result {
-	t.Helper()
 	return assertVerifiedSdk(t, name, -1, math.MaxInt32)
 }
 
 func assertVerifiedSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion int32) apkverifier.Result {
-	t.Helper()
-
 	res, err := verify(t, name, minSdkVersion, maxSdkVersion)
 	if err == nil {
 		return res
@@ -600,13 +595,10 @@ func assertVerifiedSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion i
 }
 
 func assertVerificationFailure(t *testing.T, name string, expectedError string) {
-	t.Helper()
 	assertVerificationFailureSdk(t, name, -1, math.MaxInt32, expectedError)
 }
 
 func assertVerificationFailureSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion int32, expectedError string) {
-	t.Helper()
-
 	res, err := verify(t, name, minSdkVersion, maxSdkVersion)
 	if err == nil || (expectedError != anyErrorString && (!strings.Contains(err.Error(), expectedError) || expectedError == "")) {
 		t.Fatalf("%s was supposed to fail verification with '%s', but returned error %v instead\n%s",
@@ -615,8 +607,6 @@ func assertVerificationFailureSdk(t *testing.T, name string, minSdkVersion, maxS
 }
 
 func verify(t *testing.T, name string, minSdkVersion, maxSdkVersion int32) (apkverifier.Result, error) {
-	t.Helper()
-
 	apksigPath, prs := os.LookupEnv("APKSIG_PATH")
 	if !prs || apksigPath == "" {
 		t.Skip("This test requires APKSIG_PATH set.")
@@ -628,8 +618,6 @@ func verify(t *testing.T, name string, minSdkVersion, maxSdkVersion int32) (apkv
 }
 
 func formatResult(t *testing.T, res apkverifier.Result) string {
-	t.Helper()
-
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "Detected scheme: v%d\n\n", res.SigningSchemeId)
 	if blk := res.SigningBlockResult; blk != nil {
