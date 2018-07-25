@@ -3,9 +3,12 @@ package apkverifier_test
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"github.com/avast/apkverifier"
+	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -158,6 +161,13 @@ func TestV2StrippedRejected(t *testing.T) {
 	assertVerificationFailure(t, "v2-stripped-with-ignorable-signing-schemes.apk", "cannot be verified using v1 scheme, downgrade attack?")
 }
 
+func TestV3StrippedRejected(t *testing.T) {
+	// APK signed with v2 and v3 schemes, but v3 signature was stripped from the file by
+	// modifying the v3 block ID to be the verity padding block ID. Without the stripping
+	// protection this modification ignores the v3 signing scheme block.
+	assertVerificationFailure(t, "v3-stripped.apk", "was stripped, downgrade attack")
+}
+
 func TestV2OneSignerOneSignatureAccepted(t *testing.T) {
 	// APK signed with v2 scheme only, one signer, one signature
 	assertVerifiedForEachSdk(t, "v2-only-with-dsa-sha256-%s.apk", DSA_KEY_NAMES, 25, math.MaxInt32)
@@ -169,6 +179,16 @@ func TestV2OneSignerOneSignatureAccepted(t *testing.T) {
 	// assertInstallSucceedsForEach("v2-only-with-dsa-sha512-%s.apk", DSA_KEY_NAMES)
 	assertVerifiedForEachSdk(t, "v2-only-with-ecdsa-sha512-%s.apk", EC_KEY_NAMES, 25, math.MaxInt32)
 	assertVerifiedForEachSdk(t, "v2-only-with-rsa-pkcs1-sha512-%s.apk", RSA_KEY_NAMES, 25, math.MaxInt32)
+}
+
+func TestV3OneSignerOneSignatureAccepted(t *testing.T) {
+	// APK signed with v3 scheme only, one signer, one signature
+	assertVerifiedForEachSdk(t, "v3-only-with-dsa-sha256-%s.apk", DSA_KEY_NAMES, 28, math.MaxInt32)
+	assertVerifiedForEachSdk(t, "v3-only-with-ecdsa-sha256-%s.apk", EC_KEY_NAMES, 28, math.MaxInt32)
+	assertVerifiedForEachSdk(t, "v3-only-with-rsa-pkcs1-sha256-%s.apk", RSA_KEY_NAMES, 28, math.MaxInt32)
+
+	assertVerifiedForEachSdk(t, "v3-only-with-ecdsa-sha512-%s.apk", EC_KEY_NAMES, 28, math.MaxInt32)
+	assertVerifiedForEachSdk(t, "v3-only-with-rsa-pkcs1-sha512-%s.apk", RSA_KEY_NAMES, 28, math.MaxInt32)
 }
 
 func TestV2OneSignerOneRsaPssSignatureAccepted(t *testing.T) {
@@ -191,6 +211,20 @@ func TestV2SignatureDoesNotMatchSignedDataRejected(t *testing.T) {
 	assertVerificationFailure(t, "v2-only-with-ecdsa-sha256-p256-sig-does-not-verify.apk", "verification failed")
 }
 
+func TestV3SignatureDoesNotMatchSignedDataRejected(t *testing.T) {
+	// APK signed with v3 scheme only, but the signature over signed-data does not verify
+
+	// Bitflip in DSA signature. Based on v3-only-with-dsa-sha256-2048.apk.
+	assertVerificationFailure(t, "v3-only-with-dsa-sha256-2048-sig-does-not-verify.apk", "failed to verify signature")
+
+	// Bitflip in signed data. Based on v3-only-with-rsa-pkcs1-sha256-3072.apk
+	assertVerificationFailure(t, "v3-only-with-rsa-pkcs1-sha256-3072-sig-does-not-verify.apk", "failed to verify signature")
+
+	// Based on v3-only-with-ecdsa-sha512-p521 with the signature ID changed to be ECDSA with
+	// SHA-256.
+	assertVerificationFailure(t, "v3-only-with-ecdsa-sha512-p521-sig-does-not-verify.apk", "failed to verify signature")
+}
+
 func TestV2RsaPssSignatureDoesNotMatchSignedDataRejected(t *testing.T) {
 	// APK signed with v2 scheme only, but the signature over signed-data does not verify.
 	// Signature claims to be RSA PSS with SHA-256 and 32 bytes of salt, but is actually using 0
@@ -208,6 +242,19 @@ func TestV2ContentDigestMismatchRejected(t *testing.T) {
 	// Based on v2-only-with-ecdsa-sha256-p256.apk. Obtained by modifying APK signer to flip the
 	// leftmost bit in content digest before signing signed-data.
 	assertVerificationFailure(t, "v2-only-with-ecdsa-sha256-p256-digest-mismatch.apk", "digest of contents did not verify")
+}
+
+func TestV3ContentDigestMismatchRejected(t *testing.T) {
+	// APK signed with v3 scheme only, but the digest of contents does not match the digest
+	// stored in signed-data.
+
+	// Based on v3-only-with-rsa-pkcs1-sha512-8192. Obtained by flipping a bit in the local
+	// file header of the APK.
+	assertVerificationFailure(t, "v3-only-with-rsa-pkcs1-sha512-8192-digest-mismatch.apk", "digest of contents did not verify")
+
+	// Based on v3-only-with-dsa-sha256-3072.apk. Obtained by modifying APK signer to flip the
+	// leftmost bit in content digest before signing signed-data.
+	assertVerificationFailure(t, "v3-only-with-dsa-sha256-3072-digest-mismatch.apk", "digest of contents did not verify")
 }
 
 func TestNoApkSignatureSchemeBlockRejected(t *testing.T) {
@@ -230,6 +277,16 @@ func TestNoApkSignatureSchemeBlockRejected(t *testing.T) {
 	assertVerified(t, "v1-with-apk-sig-block-but-without-apk-sig-scheme-v2-block.apk")
 }
 
+func TestNoV3ApkSignatureSchemeBlockRejected(t *testing.T) {
+	// Obtained from v3-only-with-ecdsa-sha512-p384.apk by flipping a bit in the magic field
+	// in the footer of the APK Signing Block.
+	assertVerificationFailure(t, "v3-only-with-ecdsa-sha512-p384-wrong-apk-sig-block-magic.apk", "No valid MANIFEST.SF")
+
+	// Obtained from v3-only-with-rsa-pkcs1-sha512-4096.apk by modifying the size in the APK
+	// Signature Block header and footer.
+	assertVerificationFailure(t, "v3-only-with-rsa-pkcs1-sha512-4096-apk-sig-block-size-mismatch.apk", "No valid MANIFEST.SF")
+}
+
 func TestTruncatedZipCentralDirectoryRejected(t *testing.T) {
 	// Obtained by modifying APK signer to truncate the ZIP Central Directory by one byte. The
 	// APK is otherwise fine and is signed with APK Signature Scheme v2. Based on
@@ -244,11 +301,31 @@ func TestV2UnknownPairIgnoredInApkSigningBlock(t *testing.T) {
 	assertVerifiedSdk(t, "v2-only-unknown-pair-in-apk-sig-block.apk", 25, math.MaxInt32)
 }
 
+func TestV3UnknownPairIgnoredInApkSigningBlock(t *testing.T) {
+	// Obtained by modifying APK signer to emit an unknown ID value pair into APK Signing Block
+	// before the ID value pair containing the APK Signature Scheme v3 Block. The unknown
+	// ID value should be ignored.
+	assertVerifiedSdk(t, "v3-only-unknown-pair-in-apk-sig-block.apk", 28, math.MaxInt32)
+}
+
 func TestV2UnknownSignatureAlgorithmsIgnored(t *testing.T) {
 	// APK is signed with a known signature algorithm and with a couple of unknown ones.
 	// Obtained by modifying APK signer to use "unknown" signature algorithms in addition to
 	// known ones.
 	assertVerifiedSdk(t, "v2-only-with-ignorable-unsupported-sig-algs.apk", 25, math.MaxInt32)
+}
+
+func TestV3UnknownSignatureAlgorithmsIgnored(t *testing.T) {
+	// APK is signed with a known signature algorithm and a couple of unknown ones.
+	// Obtained by modifying APK signer to use "unknown" signature algorithms in addition to
+	// known ones.
+	assertVerifiedSdk(t, "v3-only-with-ignorable-unsupported-sig-algs.apk", 28, math.MaxInt32)
+}
+
+func TestV3WithOnlyUnknownSignatureAlgorithmsRejected(t *testing.T) {
+	// APK is only signed with an unknown signature algorithm. Obtained by modifying APK
+	// signer's ID for a known signature algorithm.
+	assertVerificationFailure(t, "v3-only-no-supported-sig-algs.apk", "no supported signatures")
 }
 
 func TestV2UnknownAdditionalAttributeIgnored(t *testing.T) {
@@ -258,11 +335,29 @@ func TestV2UnknownAdditionalAttributeIgnored(t *testing.T) {
 	assertVerifiedSdk(t, "v2-only-unknown-additional-attr.apk", 25, math.MaxInt32)
 }
 
+func TestV3UnknownAdditionalAttributeIgnored(t *testing.T) {
+	// APK's v3 signature contains unknown additional attributes before and after the lineage.
+	// Obtained by modifying APK signer to output additional attributes with IDs 0x11223344
+	// and 0x99aabbcc with values 0x55667788 and 0xddeeff00
+	assertVerifiedSdk(t, "v3-only-unknown-additional-attr.apk", 28, math.MaxInt32)
+
+	// APK's v2 and v3 signatures contain unknown additional attributes before and after the
+	// anti-stripping and lineage attributes.
+	assertVerifiedSdk(t, "v2v3-unknown-additional-attr.apk", 28, math.MaxInt32)
+}
+
 func TestV2MismatchBetweenSignaturesAndDigestsBlockRejected(t *testing.T) {
 	// APK is signed with a single signature algorithm, but the digests block claims that it is
 	// signed with two different signature algorithms. Obtained by modifying APK Signer to
 	// emit an additional digest record with signature algorithm 0x12345678.
 	assertVerificationFailure(t, "v2-only-signatures-and-digests-block-mismatch.apk", "signature algorithms don't match")
+}
+
+func TestV3MismatchBetweenSignaturesAndDigestsBlockRejected(t *testing.T) {
+	// APK is signed with a single signature algorithm, but the digests block claims that it is
+	// signed with two different signature algorithms. Obtained by modifying APK Signer to
+	// emit an additional digest record with signature algorithm 0x11223344.
+	assertVerificationFailure(t, "v3-only-signatures-and-digests-block-mismatch.apk", "signature algorithms don't match")
 }
 
 func TestV2MismatchBetweenPublicKeyAndCertificateRejected(t *testing.T) {
@@ -272,10 +367,23 @@ func TestV2MismatchBetweenPublicKeyAndCertificateRejected(t *testing.T) {
 	assertVerificationFailure(t, "v2-only-cert-and-public-key-mismatch.apk", "Public key mismatch between certificate and signature")
 }
 
+func TestV3MismatchBetweenPublicKeyAndCertificateRejected(t *testing.T) {
+	// APK is signed with v3 only. The public key field does not match the public key in the
+	// leaf certificate. Obtained by modifying APK signer to write out a modified leaf
+	// certificate where the RSA modulus has a bitflip.
+	assertVerificationFailure(t, "v3-only-cert-and-public-key-mismatch.apk", "Public key mismatch")
+}
+
 func TestV2SignerBlockWithNoCertificatesRejected(t *testing.T) {
 	// APK is signed with v2 only. There are no certificates listed in the signer block.
 	// Obtained by modifying APK signer to output no certificates.
 	assertVerificationFailure(t, "v2-only-no-certs-in-sig.apk", "No certificates listed")
+}
+
+func TestV3SignerBlockWithNoCertificatesRejected(t *testing.T) {
+	// APK is signed with v3 only. There are no certificates listed in the signer block.
+	// Obtained by modifying APK signer to output no certificates.
+	assertVerificationFailure(t, "v3-only-no-certs-in-sig.apk", "No certificates listed")
 }
 
 func TestTwoSignersAccepted(t *testing.T) {
@@ -394,6 +502,8 @@ func TestEmptyApk(t *testing.T) {
 	assertVerificationFailureSdk(t, "v1-only-empty.apk", 18, math.MaxInt32, "No manifest entry")
 	// APK Signature Scheme v2 signed empty ZIP archive
 	assertVerificationFailureSdk(t, "v2-only-empty.apk", 25, math.MaxInt32, "No valid MANIFEST.SF")
+	// APK Signature Scheme v3 signed empty ZIP archive
+	assertVerificationFailureSdk(t, "v3-only-empty.apk", 28, math.MaxInt32, "No valid MANIFEST.SF")
 }
 
 func TestTargetSandboxVersion2AndHigher(t *testing.T) {
@@ -570,6 +680,73 @@ func TestV1SignedAttrsWrongSignature(t *testing.T) {
 	assertVerifiedSdk(t, apk, 24, math.MaxInt32)
 }
 
+// Lineage tests
+func TestLineageFromAPKContainsExpectedSigners(t *testing.T) {
+	res := assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", 24, math.MaxInt32)
+	if res.SigningBlockResult == nil {
+		t.Fatalf("no signing block found")
+	} else if res.SigningBlockResult.SigningLineage == nil {
+		t.Fatalf("no signing lineage found")
+	}
+
+	lin := res.SigningBlockResult.SigningLineage
+
+	certNames := []string{"rsa-2048.x509.pem", "rsa-2048_2.x509.pem", "rsa-2048_3.x509.pem"}
+	if len(certNames) != len(lin.Nodes) {
+		t.Fatalf("invalid number of certs in lineage, expected %d got %d", len(certNames), len(lin.Nodes))
+	}
+
+	rsc := filepath.Join(os.Getenv("APKSIG_PATH"), "src/test/resources/com/android/apksig")
+	for _, cn := range certNames {
+		data, err := ioutil.ReadFile(filepath.Join(rsc, cn))
+		if err != nil {
+			t.Fatalf("failed to read cert file %s: %s", cn, err.Error())
+		}
+
+		block, _ := pem.Decode(data)
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			t.Fatalf("failed to parse cert %s: %s", cn, err.Error())
+		}
+
+		found := false
+		for _, n := range lin.Nodes {
+			if n.SigningCert.Equal(cert) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			ci := apkverifier.NewCertInfo(cert)
+			t.Fatalf("certificate %s was not found in lineage", ci.String())
+		}
+	}
+}
+
+func TestLineageFromAPKWithInvalidZipCDSizeFails(t *testing.T) {
+	// This test verifies that attempting to read the lineage from an APK where the zip
+	// sections cannot be parsed fails. This APK is based off the
+	// v1v2v3-with-rsa-2048-lineage-3-signers.apk with a modified CD size in the EoCD.
+	assertVerificationFailureSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers-invalid-zip.apk",
+		24, math.MaxInt32, anyErrorString)
+}
+
+func TestLineageFromAPKWithNoLineageFails(t *testing.T) {
+	// This is a valid APK that has only been signed with the V1 and V2 signature schemes;
+	// since the lineage is an attribute in the V3 signature block this test should fail.
+	assertNoLineage(t, "golden-aligned-v1v2-out.apk", true)
+
+	// This is a valid APK signed with the V1, V2, and V3 signature schemes, but there is no
+	// lineage in the V3 signature block.
+	assertNoLineage(t, "golden-aligned-v1v2v3-out.apk", true)
+
+	// This APK is based off the v1v2v3-with-rsa-2048-lineage-3-signers.apk with a bit flip
+	// in the lineage attribute ID in the V3 signature block.
+	assertNoLineage(t, "v1v2v3-with-rsa-2048-lineage-3-signers-invalid-lineage-attr.apk", false)
+}
+
 func assertVerifiedForEach(t *testing.T, format string, names []string) {
 	assertVerifiedForEachSdk(t, format, names, -1, math.MaxInt32)
 }
@@ -600,9 +777,39 @@ func assertVerificationFailure(t *testing.T, name string, expectedError string) 
 
 func assertVerificationFailureSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion int32, expectedError string) {
 	res, err := verify(t, name, minSdkVersion, maxSdkVersion)
-	if err == nil || (expectedError != anyErrorString && (!strings.Contains(err.Error(), expectedError) || expectedError == "")) {
-		t.Fatalf("%s was supposed to fail verification with '%s', but returned error %v instead\n%s",
-			name, expectedError, err, formatResult(t, res))
+	if err == nil || expectedError == "" {
+		goto fail
+	}
+
+	if expectedError == anyErrorString {
+		return
+	}
+
+	if strings.Contains(err.Error(), expectedError) {
+		return
+	}
+
+	if res.SigningBlockResult != nil {
+		for _, err := range res.SigningBlockResult.Errors {
+			if strings.Contains(err.Error(), expectedError) {
+				return
+			}
+		}
+	}
+
+fail:
+	t.Fatalf("%s was supposed to fail verification with '%s', but returned error %v instead\n%s",
+		name, expectedError, err, formatResult(t, res))
+}
+
+func assertNoLineage(t *testing.T, name string, mustVerify bool) {
+	res, err := verify(t, name, -1, math.MaxInt32)
+	if mustVerify != (err == nil) {
+		t.Fatalf("%s has wrong verification result %v, expected %v", name, err, mustVerify)
+	} else if res.SigningBlockResult == nil {
+		t.Fatalf("missing signing block in %s", name)
+	} else if res.SigningBlockResult.SigningLineage != nil {
+		t.Fatalf("extra signing lineage in %s", name)
 	}
 }
 
