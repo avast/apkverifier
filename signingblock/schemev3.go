@@ -49,6 +49,12 @@ func (s *schemeV3) parseSigners(block *bytes.Buffer, contentDigests map[crypto.H
 }
 
 func (s *schemeV3) finalizeResult(requestedMinSdkVersion, requestedMaxSdkVersion int32, result *VerificationResult) {
+	// v3 didn't exist prior to P, so make sure that we're only judging v3 on its supported
+	// platforms
+	if requestedMinSdkVersion < sdkVersionP {
+		requestedMinSdkVersion = sdkVersionP
+	}
+
 	sort.Slice(s.signers, func(i, j int) bool {
 		return s.signers[i].minSdkVersion < s.signers[j].minSdkVersion
 	})
@@ -77,7 +83,6 @@ func (s *schemeV3) finalizeResult(requestedMinSdkVersion, requestedMaxSdkVersion
 		}
 	}
 
-	// We don't handle sdk versions in apkverifier...
 	if firstMin > requestedMinSdkVersion || lastMax < requestedMaxSdkVersion {
 		result.addError("missing sdk versions, supports only <%d;%d>", firstMin, lastMax)
 	}

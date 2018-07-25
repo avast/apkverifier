@@ -2,22 +2,23 @@ package signingblock
 
 import (
 	"bytes"
-	"encoding/binary"
-	"crypto/x509"
 	"crypto"
+	"crypto/x509"
+	"encoding/binary"
 	"fmt"
 	"math"
 )
 
 type SignatureAlgorithm int32
+
 const (
 	SigRsaPssWithSha256      SignatureAlgorithm = 0x0101
-	SigRsaPssWithSha512      = 0x0102
-	SigRsaPkcs1V15WithSha256 = 0x0103
-	SigRsaPkcs1V15WithSha512 = 0x0104
-	SigEcdsaWithSha256       = 0x0201
-	SigEcdsaWithSha512       = 0x0202
-	SigDsaWithSha256         = 0x0301
+	SigRsaPssWithSha512                         = 0x0102
+	SigRsaPkcs1V15WithSha256                    = 0x0103
+	SigRsaPkcs1V15WithSha512                    = 0x0104
+	SigEcdsaWithSha256                          = 0x0201
+	SigEcdsaWithSha512                          = 0x0202
+	SigDsaWithSha256                            = 0x0301
 )
 
 func (algo SignatureAlgorithm) String() string {
@@ -73,13 +74,12 @@ func (algo SignatureAlgorithm) getMinSdkVersion() int {
 	}
 }
 
-
 type signerContext struct {
 	result *VerificationResult
 
-	bestAlgo SignatureAlgorithm
+	bestAlgo          SignatureAlgorithm
 	bestAlgoSignature []byte
-	signaturesAlgos []SignatureAlgorithm
+	signaturesAlgos   []SignatureAlgorithm
 
 	publicKeyBytes []byte
 }
@@ -147,7 +147,7 @@ func (s *signerContext) parsePublicKey(publicKeySlice *bytes.Buffer, signedDataB
 
 	err = verifySignature(publicKey, s.bestAlgo, signedDataBytes, s.bestAlgoSignature)
 	if err != nil {
-		s.result.addError("failed to verify signature of type 0x%x: %s", s.bestAlgo, err.Error())
+		s.result.addError("failed to verify signature of type 0x%x: %s", uint32(s.bestAlgo), err.Error())
 		return
 	}
 
@@ -237,7 +237,7 @@ func (s *signerContext) parseDigests(digestsSlice *bytes.Buffer, contentDigests 
 	return true
 }
 
-func (s *signerContext)  compareAlgos(a, b SignatureAlgorithm) int {
+func (s *signerContext) compareAlgos(a, b SignatureAlgorithm) int {
 	digest1 := a.getDigestType()
 	digest2 := b.getDigestType()
 
