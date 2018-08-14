@@ -32,6 +32,7 @@ const (
 	blockIdVerityPadding = 0x42726577
 	blockIdSchemeV2      = 0x7109871a
 	blockIdSchemeV3      = 0xf05368c0
+	blockIdFrosting      = 0x2146444e
 
 	schemeIdV1 = 1
 	schemeIdV2 = 2
@@ -58,6 +59,7 @@ type signingBlock struct {
 	fileSize         int64
 	eocdOffset       int64
 	centralDirOffset int64
+	centralDirSize   int64
 	sigBlockOffset   int64
 	eocd             []byte
 }
@@ -123,23 +125,26 @@ func VerifySigningBlock(path string, minSdkVersion, maxSdkVersion int32) (res *V
 		return
 	}
 
-	schemeId, block, err := s.findSignatureBlocks(sigBlock, maxSdkVersion)
+	res = &VerificationResult{}
+	blocks, frosting, err := s.findSignatureBlocks(sigBlock, maxSdkVersion, res)
+	if frosting != nil && res.Frosting.Error == nil {
+		res.Frosting.Error = frosting.verifyApk(f, s.sigBlockOffset, blocks[schemeIdV2], s.centralDirOffset, s.centralDirSize, s.eocd)
+	}
 	if err != nil {
 		err = &signingBlockNotFoundError{err}
 		return
 	}
 
+	var block []byte
 	var scheme signatureBlockScheme
-	res = &VerificationResult{
-		SchemeId: schemeId,
-	}
 
-	switch schemeId {
-	case schemeIdV3:
+	if block = blocks[schemeIdV3]; block != nil {
+		res.SchemeId = schemeIdV3
 		scheme = &schemeV3{}
-	case schemeIdV2:
+	} else if block = blocks[schemeIdV2]; block != nil {
+		res.SchemeId = schemeIdV2
 		scheme = &schemeV2{}
-	default:
+	} else {
 		panic("unhandled")
 	}
 
@@ -195,8 +200,8 @@ func (s *signingBlock) findEocdMaxCommentSize(maxCommentSize int) error {
 						s.centralDirOffset, s.eocdOffset)
 				}
 
-				centralDirSize := binary.LittleEndian.Uint32(buf[pos+eocdCentralDirSizeOffset:])
-				if s.centralDirOffset+int64(centralDirSize) != s.eocdOffset {
+				s.centralDirSize = int64(binary.LittleEndian.Uint32(buf[pos+eocdCentralDirSizeOffset:]))
+				if s.centralDirOffset+int64(s.centralDirSize) != s.eocdOffset {
 					return errors.New("ZIP Central Directory is not immediately followed by End of Central Directory")
 				}
 				return nil
@@ -281,9 +286,11 @@ func (s *signingBlock) findApkSigningBlock() (block []byte, offset int64, err er
 	return
 }
 
-func (s *signingBlock) findSignatureBlocks(sigBlock []byte, maxSdkVersion int32) (schemeId int, block []byte, err error) {
+func (s *signingBlock) findSignatureBlocks(sigBlock []byte, maxSdkVersion int32, res *VerificationResult) (blocks map[int][]byte, frostingRes *frostingInfo, err error) {
 	pairs := bytes.NewReader(sigBlock[8 : len(sigBlock)-24])
 	entryCount := 0
+
+	blocks = make(map[int][]byte)
 
 	for pairs.Len() > 0 {
 		entryCount++
@@ -315,23 +322,36 @@ func (s *signingBlock) findSignatureBlocks(sigBlock []byte, maxSdkVersion int32)
 
 		switch id {
 		case blockIdSchemeV3:
-			if maxSdkVersion >= sdkVersionP && schemeIdV3 > schemeId {
-				block = make([]byte, entryLen-4)
+			if maxSdkVersion >= sdkVersionP {
+				block := make([]byte, entryLen-4)
 				if _, err = pairs.Read(block); err != nil {
 					return
 				}
-				schemeId = schemeIdV3
+				blocks[schemeIdV3] = block
 			}
 		case blockIdSchemeV2:
-			if schemeIdV2 > schemeId {
-				block = make([]byte, entryLen-4)
-				if _, err = pairs.Read(block); err != nil {
-					return
-				}
-				schemeId = schemeIdV2
+			block := make([]byte, entryLen-4)
+			if _, err = pairs.Read(block); err != nil {
+				return
 			}
+			blocks[schemeIdV2] = block
 		case blockIdVerityPadding:
 			// TODO: NYI
+		case blockIdFrosting:
+			frostingBlock := make([]byte, entryLen-4)
+			if _, err = pairs.Read(frostingBlock); err != nil {
+				return
+			}
+
+			var frosting frostingInfo
+			var frResult FrostingResult
+			res.Frosting = &frResult
+			frResult.KeySha256, frResult.ProtobufInfo, frResult.Error = frosting.parse(frostingBlock)
+			if frResult.Error != nil {
+				res.addWarning("frosting: %s", frResult.Error.Error())
+			} else {
+				frostingRes = &frosting
+			}
 		}
 
 		if _, err = pairs.Seek(nextEntryPos, io.SeekStart); err != nil {
@@ -339,9 +359,10 @@ func (s *signingBlock) findSignatureBlocks(sigBlock []byte, maxSdkVersion int32)
 		}
 	}
 
-	if schemeId == 0 {
-		err = errors.New("No APK Signature Scheme v2 block in APK Signing Block")
+	if len(blocks) == 0 {
+		err = errors.New("No APK Signature block in APK Signing Block")
 	}
+
 	return
 }
 

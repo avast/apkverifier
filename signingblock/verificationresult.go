@@ -6,12 +6,20 @@ import (
 )
 
 type VerificationResult struct {
-	Certs [][]*x509.Certificate
-	SchemeId int
+	Certs          [][]*x509.Certificate
+	SchemeId       int
 	SigningLineage *V3SigningLineage
 
+	Frosting *FrostingResult
+
 	Warnings []string
-	Errors []error
+	Errors   []error
+}
+
+type FrostingResult struct {
+	Error        error
+	KeySha256    string
+	ProtobufInfo []byte
 }
 
 type certAdder struct {
@@ -50,8 +58,7 @@ func (a *certAdder) append(cert *x509.Certificate) {
 	if len(a.Certs) == 1 {
 		a.res.Certs = append(a.res.Certs, a.Certs)
 	} else {
-		idx := len(a.res.Certs)-1
+		idx := len(a.res.Certs) - 1
 		a.res.Certs[idx] = a.Certs
 	}
 }
-
