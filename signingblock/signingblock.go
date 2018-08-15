@@ -3,6 +3,7 @@ package signingblock
 import (
 	"bytes"
 	"crypto"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -395,11 +396,11 @@ func (s *signingBlock) verify(scheme signatureBlockScheme, block []byte, minSdkV
 func (s *signingBlock) verifyIntegrity(expectedDigests map[crypto.Hash][]byte, result *VerificationResult) bool {
 	beforeApkSigningBlock := &dataSourceApk{file: s.file, start: 0, end: s.sigBlockOffset}
 	centralDir := &dataSourceApk{file: s.file, start: s.centralDirOffset, end: s.eocdOffset}
-	eocd := &dataSourceEocd{eocd: append([]byte(nil), s.eocd...)}
+	eocd := &dataSourceBytes{data: append([]byte(nil), s.eocd...)}
 
 	// For the purposes of integrity verification, ZIP End of Central Directory's field Start of
 	// Central Directory must be considered to point to the offset of the APK Signing Block.
-	binary.LittleEndian.PutUint32(eocd.eocd[eocdCentralDirOffsetOffset:], uint32(s.sigBlockOffset))
+	binary.LittleEndian.PutUint32(eocd.data[eocdCentralDirOffsetOffset:], uint32(s.sigBlockOffset))
 
 	digestAlgorithms := make([]crypto.Hash, 0, len(expectedDigests))
 	for algo := range expectedDigests {
@@ -412,9 +413,9 @@ func (s *signingBlock) verifyIntegrity(expectedDigests map[crypto.Hash][]byte, r
 		return false
 	}
 
-	for i, algo := range digestAlgorithms {
-		if !bytes.Equal(expectedDigests[algo], actualDigests[i]) {
-			result.addError("%T digest of contents did not verify.", algo.New())
+	for _, algo := range digestAlgorithms {
+		if !bytes.Equal(expectedDigests[algo], actualDigests[algo]) {
+			result.addError("%d digest of contents did not verify.", algo)
 			continue
 
 		}
@@ -422,7 +423,47 @@ func (s *signingBlock) verifyIntegrity(expectedDigests map[crypto.Hash][]byte, r
 	return true
 }
 
-func (s *signingBlock) computeContentDigests(digestAlgorithms []crypto.Hash, contents ...dataSource) ([][]byte, error) {
+func (s *signingBlock) computeContentDigests(digestAlgorithms []crypto.Hash, contents ...dataSource) (map[crypto.Hash][]byte, error) {
+	var oneMbAlgos []crypto.Hash
+	hasVerity := false
+	for _, algo := range digestAlgorithms {
+		switch algo {
+		case crypto.SHA256, crypto.SHA512:
+			oneMbAlgos = append(oneMbAlgos, algo)
+		case veritySHA256:
+			hasVerity = true
+		default:
+			panic(fmt.Sprintf("unhandled crypto algo %d", int(algo)))
+		}
+	}
+
+	var result map[crypto.Hash][]byte
+	var err error
+	if len(oneMbAlgos) != 0 {
+		result, err = s.computeOneMbChunkContentDigests(oneMbAlgos, contents)
+		if err != nil {
+			return result, err
+		}
+	}
+
+	if hasVerity {
+		if result == nil {
+			result = make(map[crypto.Hash][]byte)
+		}
+		result[veritySHA256], err = s.computeVerityContentDigest(contents)
+		if err != nil {
+			return result, err
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("no valid digest algorithms")
+	}
+
+	return result, nil
+}
+
+func (s *signingBlock) computeOneMbChunkContentDigests(digestAlgorithms []crypto.Hash, contents []dataSource) (map[crypto.Hash][]byte, error) {
 	var totalChunkCount int64
 	for _, input := range contents {
 		totalChunkCount += input.chunkCount()
@@ -475,66 +516,28 @@ func (s *signingBlock) computeContentDigests(digestAlgorithms []crypto.Hash, con
 			chunkIndex++
 		}
 	}
-	result := make([][]byte, len(digestAlgorithms))
+	result := make(map[crypto.Hash][]byte, len(digestAlgorithms))
 	for i := range digestsOfChunks {
 		hashers[i].Write(digestsOfChunks[i])
-		result[i] = hashers[i].Sum(nil)
+		result[digestAlgorithms[i]] = hashers[i].Sum(nil)
 	}
 	return result, nil
 }
 
-type dataSource interface {
-	chunkCount() int64
-	length() int64
-	writeTo(w io.Writer, offset, size int64) error
-}
-
-type dataSourceApk struct {
-	file       *os.File
-	start, end int64
-}
-
-func (se *dataSourceApk) chunkCount() int64 {
-	return (se.end - se.start + maxChunkSize - 1) / maxChunkSize
-}
-
-func (se *dataSourceApk) writeTo(w io.Writer, offset, size int64) error {
-	if offset > se.end || offset > se.end-se.start {
-		return errors.New("Out of bounds offset")
-	} else if size > se.end-se.start || offset+size > se.end-se.start {
-		return errors.New("Out of bounds size")
+func (s *signingBlock) computeVerityContentDigest(contents []dataSource) ([]byte, error) {
+	if contents[0].length()%verityChunkSize != 0 {
+		return nil, fmt.Errorf("APK Signing block size not a multiple of %d", verityChunkSize)
 	}
 
-	if _, err := se.file.Seek(se.start+offset, io.SeekStart); err != nil {
-		return err
+	chained := newChainedDataSource(contents...)
+	builder := newVerityTreeBuilder(make([]byte, 8))
+	rootHash, err := builder.generateTreeRootHash(chained)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate verity tree root hash: %s", err.Error())
 	}
 
-	_, err := io.CopyN(w, se.file, size)
-	return err
-}
-
-func (se *dataSourceApk) length() int64 {
-	return se.end - se.start
-}
-
-type dataSourceEocd struct {
-	eocd []byte
-}
-
-func (se *dataSourceEocd) chunkCount() int64 {
-	return (int64(len(se.eocd)) + maxChunkSize - 1) / maxChunkSize
-}
-
-func (se *dataSourceEocd) writeTo(w io.Writer, offset, size int64) error {
-	if offset >= int64(len(se.eocd)) {
-		return errors.New("Out of bounds offset")
-	} else if size > int64(len(se.eocd)) || offset+size > int64(len(se.eocd)) {
-		return errors.New("Out of bounds size")
-	}
-	_, err := w.Write(se.eocd[offset : offset+size])
-	return err
-}
-
-func (se *dataSourceEocd) length() int64 {
-	return int64(len(se.eocd))
+	result := make([]byte, sha256.Size+8)
+	copy(result, rootHash)
+	binary.LittleEndian.PutUint64(result[sha256.Size:], uint64(chained.length()))
+	return result, nil
 }

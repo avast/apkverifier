@@ -2,18 +2,18 @@ package signingblock
 
 import (
 	"bytes"
-	"fmt"
-	"encoding/binary"
-	"errors"
-	"crypto/sha256"
-	"crypto/rsa"
 	"crypto"
-	"crypto/sha512"
-	"math/big"
-	"encoding/asn1"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"math/big"
 	"strings"
 )
 
@@ -48,28 +48,31 @@ func verifySignature(publicKey interface{}, algo SignatureAlgorithm, signedDataB
 		return rsa.VerifyPSS(publicKey.(*rsa.PublicKey), crypto.SHA512, hashed[:], signature, &rsa.PSSOptions{
 			SaltLength: 512 / 8,
 		})
-	case SigRsaPkcs1V15WithSha256:
+	case SigRsaPkcs1V15WithSha256, SigVerityRsaPkcs1V15WithSha256:
 		hashed := sha256.Sum256(signedDataBytes)
 		return rsa.VerifyPKCS1v15(publicKey.(*rsa.PublicKey), crypto.SHA256, hashed[:], signature)
 	case SigRsaPkcs1V15WithSha512:
 		hashed := sha512.Sum512(signedDataBytes)
 		return rsa.VerifyPKCS1v15(publicKey.(*rsa.PublicKey), crypto.SHA512, hashed[:], signature)
-	case SigEcdsaWithSha256, SigEcdsaWithSha512, SigDsaWithSha256:
+	case SigEcdsaWithSha256, SigEcdsaWithSha512, SigDsaWithSha256, SigVerityEcdsaWithSha256, SigVerityDsaWithSha256:
 		var params []*big.Int
 		if _, err := asn1.Unmarshal(signature, &params); err != nil {
 			return fmt.Errorf("failed to unmarshal ECDSA signature: %s", err.Error())
 		}
 
 		var hashed []byte
-		if algo == SigEcdsaWithSha256 || algo == SigDsaWithSha256 {
+		switch algo {
+		case SigEcdsaWithSha256, SigDsaWithSha256, SigVerityEcdsaWithSha256, SigVerityDsaWithSha256:
 			h := sha256.Sum256(signedDataBytes)
 			hashed = h[:]
-		} else {
+		case SigEcdsaWithSha512:
 			h := sha512.Sum512(signedDataBytes)
 			hashed = h[:]
+		default:
+			panic("Unandled")
 		}
 
-		if algo == SigDsaWithSha256 {
+		if algo == SigDsaWithSha256 || algo == SigVerityDsaWithSha256 {
 			k := publicKey.(*dsa.PublicKey)
 			hashed = hashed[:k.Q.BitLen()/8]
 			if !dsa.Verify(k, hashed, params[0], params[1]) {

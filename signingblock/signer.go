@@ -12,13 +12,20 @@ import (
 type SignatureAlgorithm int32
 
 const (
-	SigRsaPssWithSha256      SignatureAlgorithm = 0x0101
-	SigRsaPssWithSha512                         = 0x0102
-	SigRsaPkcs1V15WithSha256                    = 0x0103
-	SigRsaPkcs1V15WithSha512                    = 0x0104
-	SigEcdsaWithSha256                          = 0x0201
-	SigEcdsaWithSha512                          = 0x0202
-	SigDsaWithSha256                            = 0x0301
+	SigRsaPssWithSha256            SignatureAlgorithm = 0x0101
+	SigRsaPssWithSha512                               = 0x0102
+	SigRsaPkcs1V15WithSha256                          = 0x0103
+	SigRsaPkcs1V15WithSha512                          = 0x0104
+	SigEcdsaWithSha256                                = 0x0201
+	SigEcdsaWithSha512                                = 0x0202
+	SigDsaWithSha256                                  = 0x0301
+	SigVerityRsaPkcs1V15WithSha256                    = 0x0421
+	SigVerityEcdsaWithSha256                          = 0x0423
+	SigVerityDsaWithSha256                            = 0x425
+)
+
+const (
+	veritySHA256 crypto.Hash = iota + 65535
 )
 
 func (algo SignatureAlgorithm) String() string {
@@ -37,8 +44,14 @@ func (algo SignatureAlgorithm) String() string {
 		return "SigEcdsaWithSha512"
 	case SigDsaWithSha256:
 		return "SigDsaWithSha256"
+	case SigVerityRsaPkcs1V15WithSha256:
+		return "SigVerityRsaPkcs1V15WithSha256"
+	case SigVerityEcdsaWithSha256:
+		return "SigVerityEcdsaWithSha256"
+	case SigVerityDsaWithSha256:
+		return "SigVerityDsaWithSha256"
 	}
-	return "unknown"
+	return fmt.Sprintf("0x%04x", uint32(algo))
 }
 
 func (algo SignatureAlgorithm) isSupported() bool {
@@ -46,7 +59,8 @@ func (algo SignatureAlgorithm) isSupported() bool {
 	case SigRsaPssWithSha256, SigRsaPssWithSha512,
 		SigRsaPkcs1V15WithSha256, SigRsaPkcs1V15WithSha512,
 		SigEcdsaWithSha256, SigEcdsaWithSha512,
-		SigDsaWithSha256:
+		SigDsaWithSha256,
+		SigVerityRsaPkcs1V15WithSha256, SigVerityEcdsaWithSha256, SigVerityDsaWithSha256:
 		return true
 	default:
 		return false
@@ -57,6 +71,8 @@ func (algo SignatureAlgorithm) getDigestType() crypto.Hash {
 	switch algo {
 	case SigRsaPssWithSha256, SigRsaPkcs1V15WithSha256, SigEcdsaWithSha256, SigDsaWithSha256:
 		return crypto.SHA256
+	case SigVerityRsaPkcs1V15WithSha256, SigVerityEcdsaWithSha256, SigVerityDsaWithSha256:
+		return veritySHA256
 	case SigRsaPssWithSha512, SigRsaPkcs1V15WithSha512, SigEcdsaWithSha512:
 		return crypto.SHA512
 	default:
@@ -69,6 +85,8 @@ func (algo SignatureAlgorithm) getMinSdkVersion() int {
 	case SigRsaPssWithSha512, SigRsaPkcs1V15WithSha256, SigRsaPkcs1V15WithSha512,
 		SigEcdsaWithSha256, SigEcdsaWithSha512, SigDsaWithSha256:
 		return sdkVersionN
+	case SigVerityRsaPkcs1V15WithSha256, SigVerityEcdsaWithSha256, SigVerityDsaWithSha256:
+		return sdkVersionP
 	default:
 		return math.MaxInt32
 	}
@@ -109,7 +127,7 @@ func (s *signerContext) parseSignatures(signaturesSlice *bytes.Buffer) (success 
 
 		s.signaturesAlgos = append(s.signaturesAlgos, algo)
 		if !algo.isSupported() {
-			s.result.addWarning("signature %d is using unknown algorithm 0x%04x", signatureCount, uint32(algo))
+			s.result.addWarning("signature %d is using unsupported algorithm %s", signatureCount, algo.String())
 			continue
 		}
 
@@ -246,17 +264,28 @@ func (s *signerContext) compareAlgos(a, b SignatureAlgorithm) int {
 		switch digest2 {
 		case crypto.SHA256:
 			return 0
-		case crypto.SHA512:
+		case crypto.SHA512, veritySHA256:
 			return -1
 		default:
 			panic(fmt.Sprintf("Unknown digest2: %d", digest2))
 		}
 	case crypto.SHA512:
 		switch digest2 {
-		case crypto.SHA256:
+		case crypto.SHA256, veritySHA256:
 			return 1
 		case crypto.SHA512:
 			return 0
+		default:
+			panic(fmt.Sprintf("Unknown digest2: %d", digest2))
+		}
+	case veritySHA256:
+		switch digest2 {
+		case crypto.SHA256:
+			return 1
+		case veritySHA256:
+			return 0
+		case crypto.SHA512:
+			return -1
 		default:
 			panic(fmt.Sprintf("Unknown digest2: %d", digest2))
 		}
