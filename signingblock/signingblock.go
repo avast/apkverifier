@@ -337,7 +337,8 @@ func (s *signingBlock) findSignatureBlocks(sigBlock []byte, maxSdkVersion int32,
 			}
 			blocks[schemeIdV2] = block
 		case blockIdVerityPadding:
-			// TODO: NYI
+			// Block full of zeros to ensure the signing block is padded to 4K,
+			// for verity signature verification.
 		case blockIdFrosting:
 			frostingBlock := make([]byte, entryLen-4)
 			if _, err = pairs.Read(frostingBlock); err != nil {
