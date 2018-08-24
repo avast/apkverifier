@@ -24,30 +24,32 @@ import (
  *  *** FROSTING BLOCK STRUCTURE ***
  *
  *  ------------------------------------------------------------
- *  |- Header
- *      |- signatures meta block end (varint, offset)
- *       ---------------------------  SIGNED DATA START ---------------------------
- *      |- signatures meta block start (varint, offset)
+ *  |- size of the protobuf + size of the metadata array (varint)  (AKA relative offset to the signatures array)
+ *   ---------------------------  SIGNED DATA START ---------------------------
+ *  |- protobuf size (varint)
  *  |- protobuf frosting info (byte array)
- *  |- size of the signatures meta array in bytes (varint)
- *  |- Signatures meta array, pick first non-disabled
- *      |- next signature (varint, offset)
+ *  |
+ *  |- metadata array size (varint)
+ *  |- metadata array, pick first non-disabled
+ *      |- entry size (varint)
  *      |- disabled flag (varint), checked != 0 in Play Store
  *      |- public key index (varint), from finsky.peer_app_sharing_api.frosting_public_keys comma separated array
  *      |- fileSha256 (digest over the apk before signing block, schemev2 signing block and eocd, see verifyApk()
  *        --------------------------- SIGNED DATA END ---------------------------
- *  |- size of the signatures array in bytes (varint)
- *  |- Signatures array, indexing matches the signature meta array
- *      |- signature's size (varint)
+ *  |
+ *  |- size of the signatures array (varint)
+ *  |- signatures array, indexing matches the metadata array
+ *      |- entry size (varint)
  *      |- signature (byte array)
  *  -------------------------------------------------------------
  *
- * The 'offset' fields are based at position after the field itself.
+ * All the size fields are in bytes and counted excluding the size varint itself.
  *
- * The SIGNED DATA are verified against signature created by frostingPublicKeys key. It uses ECDSAWithSHA256 algorithm.
+ * The SIGNED DATA end after the metadata entry you're checking againts, even if it is not the last entry.
+ * They are verified against signature created by frostingPublicKeys key. It uses ECDSAWithSHA256 algorithm.
  * The fileSha256 hash must match the APK for the frosting to be valid.
  *
- * The 'protobuf frosting info' is a rather comples protobuf structure. It contains some APK's metadata,
+ * The 'protobuf frosting info' is a rather complex protobuf structure. It contains some APK's metadata,
  * nothing really useful it seems. It does not seem to be relevant to the frosting signature's validity,
  * so I have not examined it further.
  * Interestingly, Google Photos apk from apkmirror.com contains 'com.google.android.apps.photos.PIXEL_2018_PRELOAD'
@@ -235,31 +237,31 @@ func (f *frostingInfo) verifySignature(signed, signature []byte, keyBase64 strin
 func (f *frostingInfo) parseFrostingBlock(block []byte) error {
 	bf := bytes.NewReader(block)
 
-	signaturesEnd, err := f.readInt32(bf)
-	if err != nil || signaturesEnd <= 0 || int(signaturesEnd) > bf.Len() {
-		return fmt.Errorf("invalid signaturesEnd value")
+	protoAndMetaSize, err := f.readInt32(bf)
+	if err != nil || protoAndMetaSize <= 0 || int(protoAndMetaSize) > bf.Len() {
+		return fmt.Errorf("invalid protoAndMetaSize value")
 	}
-
 	offAfterSignaturesEnd, _ := bf.Seek(0, io.SeekCurrent)
-	signaturesStart, err := f.readInt32(bf)
+
+	protobufSize, err := f.readInt32(bf)
 	frostingProtobufStart, _ := bf.Seek(0, io.SeekCurrent)
 
-	if err != nil || signaturesStart <= 0 || int(signaturesStart) > bf.Len() ||
-		signaturesStart > signaturesEnd-int32(frostingProtobufStart-offAfterSignaturesEnd) {
-		return fmt.Errorf("invalid signaturesStart value")
+	if err != nil || protobufSize <= 0 || int(protobufSize) > bf.Len() ||
+		protobufSize > protoAndMetaSize-int32(frostingProtobufStart-offAfterSignaturesEnd) {
+		return fmt.Errorf("invalid protobufSize value")
 	}
 
-	if _, err := bf.Seek(int64(signaturesStart), io.SeekCurrent); err != nil {
-		return fmt.Errorf("seek to signatures start failed %s", err.Error())
+	if _, err := bf.Seek(int64(protobufSize), io.SeekCurrent); err != nil {
+		return fmt.Errorf("seek to metadata start failed %s", err.Error())
 	}
 
-	signaturesSize, err := f.readInt32(bf)
-	if err != nil || signaturesSize <= 0 || signaturesSize > (signaturesEnd-signaturesStart) {
-		return fmt.Errorf("invalid signaturesSize")
+	metadataSize, err := f.readInt32(bf)
+	if err != nil || metadataSize <= 0 || metadataSize > (protoAndMetaSize-protobufSize) {
+		return fmt.Errorf("invalid metadataSize")
 	}
 
 	limit, _ := bf.Seek(0, io.SeekCurrent)
-	limit += int64(signaturesSize)
+	limit += int64(metadataSize)
 	for signatureIdx := 0; signatureIdx < math.MaxInt16; signatureIdx++ {
 		pos, _ := bf.Seek(0, io.SeekCurrent)
 		if pos >= limit {
@@ -301,7 +303,7 @@ func (f *frostingInfo) parseFrostingBlock(block []byte) error {
 			return fmt.Errorf("failed to read signature: %s", err.Error())
 		}
 
-		if _, err := bf.Seek(offAfterSignaturesEnd+int64(signaturesEnd), io.SeekStart); err != nil {
+		if _, err := bf.Seek(offAfterSignaturesEnd+int64(protoAndMetaSize), io.SeekStart); err != nil {
 			return fmt.Errorf("failed to seek after signature read: %s", err.Error())
 		}
 
@@ -330,7 +332,7 @@ func (f *frostingInfo) parseFrostingBlock(block []byte) error {
 			return fmt.Errorf("failed to seek to signed data: %s", err.Error())
 		}
 
-		protobufInfo := make([]byte, signaturesStart)
+		protobufInfo := make([]byte, protobufSize)
 		if _, err := bf.Read(protobufInfo); err != nil {
 			return fmt.Errorf("failed to read protobufInfo data: %s", err.Error())
 		}
