@@ -510,9 +510,11 @@ func (p *schemeV1) getDigestsToVerify(entry map[string]string, suffix string, mi
 			}
 		}
 
-		if len(res) == 0 {
+		// apksig fails the verification in this case, because pre-18 Android will, too.
+		// We don't want to, newer devices are more relevant to us.
+		/*if len(res) == 0 {
 			return res
-		}
+		}*/
 	}
 
 	if maxSdkVersion >= 18 {
