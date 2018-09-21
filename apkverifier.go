@@ -62,15 +62,12 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 	}
 
 	var sandboxVersion int32
-	var sandboxError error
+	var manifestError error
 	if minSdkVersion == -1 || maxSdkVersion >= 26 {
 		var manifestMinSdkVersion int32
 		manifestMinSdkVersion, sandboxVersion, err = getManifestInfo(optionalZip)
 		if err != nil {
-			if minSdkVersion == -1 {
-				return res, err
-			}
-			sandboxError = err
+			manifestError = err
 		} else {
 			if minSdkVersion == -1 {
 				minSdkVersion = manifestMinSdkVersion
@@ -102,7 +99,8 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 
 	// Android O and newer requires that APKs targeting security sandbox version 2 and higher
 	// are signed using APK Signature Scheme v2 or newer.
-	if maxSdkVersion >= 26 && sandboxVersion > 1 && signingBlockError != nil {
+	var sandboxError error
+	if maxSdkVersion >= 26 && sandboxVersion > 1 && (signingBlockError != nil || res.SigningSchemeId < 2) {
 		sandboxError = fmt.Errorf("no valid signature for sandbox version %d", sandboxVersion)
 	}
 
@@ -114,8 +112,12 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 
 	if sandboxError != nil {
 		err = sandboxError
-	} else if err == nil && fileMagic == dexHeaderMagic {
-		err = ErrMixedDexApkFile
+	} else if err == nil {
+		if res.SigningSchemeId != 1 && manifestError != nil {
+			err = manifestError
+		} else if fileMagic == dexHeaderMagic {
+			err = ErrMixedDexApkFile
+		}
 	}
 
 	return
