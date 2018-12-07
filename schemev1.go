@@ -136,6 +136,39 @@ type schemeV1 struct {
 // We keep the behavior deterministic in our implementation, based on the file order in the ZIP.
 // This unfortunately produces different result than Android in some corner cases.
 func verifySchemeV1(apk *apkparser.ZipReader, hasValidSigningBlock bool, minSdkVersion, maxSdkVersion int32) ([][]*x509.Certificate, error) {
+	scheme, err := newSchemeV1(apk)
+	if err != nil {
+		return nil, err
+	}
+
+	err = scheme.verify(apk, hasValidSigningBlock, minSdkVersion, maxSdkVersion)
+	return scheme.chain, err
+}
+
+func extractCertsSchemeV1(apk *apkparser.ZipReader, minSdkVersion, maxSdkVersion int32) ([][]*x509.Certificate, error) {
+	scheme, err := newSchemeV1(apk)
+	if err != nil {
+		return nil, err
+	}
+
+	var signatureErrors []error
+	for _, sig := range scheme.sigs {
+		sig.chain, err = scheme.verifySignature(sig, minSdkVersion, maxSdkVersion)
+		if sig.chain != nil {
+			scheme.chain = append(scheme.chain, sig.chain)
+		}
+		if err != nil {
+			signatureErrors = append(signatureErrors, fmt.Errorf("%s: %s", sig.sigBlockFilename, err))
+		}
+	}
+
+	if len(signatureErrors) != 0 {
+		return scheme.chain, fmt.Errorf("One or more of the signatures are invalid: %v", signatureErrors)
+	}
+	return scheme.chain, nil
+}
+
+func newSchemeV1(apk *apkparser.ZipReader) (*schemeV1, error) {
 	scheme := schemeV1{
 		sigs:    make(map[string]*schemeV1Signature),
 		hashers: make(map[string]hash.Hash),
@@ -178,7 +211,7 @@ func verifySchemeV1(apk *apkparser.ZipReader, hasValidSigningBlock bool, minSdkV
 			// Behavior changed in Android 7.0 - badly formed signature blocks are no longer ignored
 			// errors = append(errors, fmt.Errorf("%s: %s", name, err.Error()))
 			// continue
-			return scheme.chain, fmt.Errorf("%s: %s", name, err.Error())
+			return nil, fmt.Errorf("%s: %s", name, err.Error())
 		}
 
 		if err := scheme.addSignatureFile(sfname, sf); err != nil {
@@ -192,14 +225,12 @@ func verifySchemeV1(apk *apkparser.ZipReader, hasValidSigningBlock bool, minSdkV
 
 	if err := scheme.prepForVerification(); err != nil {
 		if len(errors) == 0 {
-			return scheme.chain, fmt.Errorf("Can't verify: %s", err.Error())
+			return nil, fmt.Errorf("Can't verify: %s", err.Error())
 		} else {
-			return scheme.chain, fmt.Errorf("Can't verify: %s %v", err.Error(), errors)
+			return nil, fmt.Errorf("Can't verify: %s %v", err.Error(), errors)
 		}
 	}
-
-	err := scheme.verify(apk, hasValidSigningBlock, minSdkVersion, maxSdkVersion)
-	return scheme.chain, err
+	return &scheme, nil
 }
 
 func (p *schemeV1) addManifest(f *apkparser.ZipReaderFile) (err error) {

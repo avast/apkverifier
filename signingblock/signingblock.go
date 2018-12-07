@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -79,19 +80,69 @@ func IsSigningBlockNotFoundError(err error) bool {
 }
 
 func VerifySigningBlock(path string, minSdkVersion, maxSdkVersion int32) (res *VerificationResult, magic uint32, err error) {
+	var s *signingBlock
+	s, magic, err = newSigningBlock(path, maxSdkVersion)
+	if err != nil {
+		return
+	}
+	defer s.Close()
+
+	res = &VerificationResult{}
+	blocks, frosting, err := s.findSignatureBlocks(maxSdkVersion, res)
+	if frosting != nil && res.Frosting.Error == nil {
+		res.Frosting.Error = frosting.verifyApk(s.file, s.sigBlockOffset, blocks[schemeIdV2], s.centralDirOffset, s.centralDirSize, s.eocd)
+	}
+	if err != nil {
+		err = &signingBlockNotFoundError{err}
+		return
+	}
+
+	var block []byte
+	var scheme signatureBlockScheme
+	res.SchemeId, scheme, block = s.pickScheme(blocks)
+
+	s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
+	err = res.GetLastError()
+	return
+}
+
+func ExtractCerts(path string, minSdkVersion, maxSdkVersion int32) (certs [][]*x509.Certificate, err error) {
+	var s *signingBlock
+	s, _, err = newSigningBlock(path, maxSdkVersion)
+	if err != nil {
+		return
+	}
+	defer s.Close()
+
+	res := &VerificationResult{}
+	blocks, _, err := s.findSignatureBlocks(maxSdkVersion, res)
+	if err != nil {
+		err = &signingBlockNotFoundError{err}
+		return
+	}
+
+	var block []byte
+	var scheme signatureBlockScheme
+	res.SchemeId, scheme, block = s.pickScheme(blocks)
+
+	s.extractCerts(scheme, block, res)
+	return res.Certs, res.GetLastError()
+}
+
+func newSigningBlock(path string, maxSdkVersion int32) (sblock *signingBlock, magic uint32, err error) {
 	if maxSdkVersion < sdkVersionN {
-		return nil, 0, &signingBlockNotFoundError{errors.New("unsupported SDK version, requires at least N")}
+		err = &signingBlockNotFoundError{errors.New("unsupported SDK version, requires at least N")}
+		return
 	}
 
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, 0, err
+		return
 	}
-	defer f.Close()
 
 	fi, err := f.Stat()
 	if err != nil {
-		return nil, 0, err
+		return
 	}
 
 	if fi.Size() < 4 {
@@ -104,54 +155,15 @@ func VerifySigningBlock(path string, minSdkVersion, maxSdkVersion int32) (res *V
 		return
 	}
 
-	s := signingBlock{
+	sblock = &signingBlock{
 		file:     f,
 		fileSize: fi.Size(),
 	}
-
-	if err = s.findEocd(); err != nil {
-		err = &signingBlockNotFoundError{err}
-		return
-	}
-
-	if s.isZip64() {
-		err = &signingBlockNotFoundError{errors.New("ZIP64 APK not supported")}
-		return
-	}
-
-	var sigBlock []byte
-	sigBlock, s.sigBlockOffset, err = s.findApkSigningBlock()
-	if err != nil {
-		err = &signingBlockNotFoundError{err}
-		return
-	}
-
-	res = &VerificationResult{}
-	blocks, frosting, err := s.findSignatureBlocks(sigBlock, maxSdkVersion, res)
-	if frosting != nil && res.Frosting.Error == nil {
-		res.Frosting.Error = frosting.verifyApk(f, s.sigBlockOffset, blocks[schemeIdV2], s.centralDirOffset, s.centralDirSize, s.eocd)
-	}
-	if err != nil {
-		err = &signingBlockNotFoundError{err}
-		return
-	}
-
-	var block []byte
-	var scheme signatureBlockScheme
-
-	if block = blocks[schemeIdV3]; block != nil {
-		res.SchemeId = schemeIdV3
-		scheme = &schemeV3{}
-	} else if block = blocks[schemeIdV2]; block != nil {
-		res.SchemeId = schemeIdV2
-		scheme = &schemeV2{}
-	} else {
-		panic("unhandled")
-	}
-
-	s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
-	err = res.GetLastError()
 	return
+}
+
+func (s *signingBlock) Close() error {
+	return s.file.Close()
 }
 
 func (s *signingBlock) findEocd() error {
@@ -229,6 +241,19 @@ func (s *signingBlock) isZip64() bool {
 	return magic == zip64LocatorMagic
 }
 
+func (s *signingBlock) pickScheme(blocks map[int][]byte) (schemeId int, scheme signatureBlockScheme, block []byte) {
+	if block = blocks[schemeIdV3]; block != nil {
+		schemeId = schemeIdV3
+		scheme = &schemeV3{}
+	} else if block = blocks[schemeIdV2]; block != nil {
+		schemeId = schemeIdV2
+		scheme = &schemeV2{}
+	} else {
+		panic("unhandled")
+	}
+	return
+}
+
 func (s *signingBlock) findApkSigningBlock() (block []byte, offset int64, err error) {
 	if s.centralDirOffset < apkSigBlockMinSize {
 		err = errNoSigningBlockSignature
@@ -287,7 +312,24 @@ func (s *signingBlock) findApkSigningBlock() (block []byte, offset int64, err er
 	return
 }
 
-func (s *signingBlock) findSignatureBlocks(sigBlock []byte, maxSdkVersion int32, res *VerificationResult) (blocks map[int][]byte, frostingRes *frostingInfo, err error) {
+func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *VerificationResult) (blocks map[int][]byte, frostingRes *frostingInfo, err error) {
+	if err = s.findEocd(); err != nil {
+		err = &signingBlockNotFoundError{err}
+		return
+	}
+
+	if s.isZip64() {
+		err = &signingBlockNotFoundError{errors.New("ZIP64 APK not supported")}
+		return
+	}
+
+	var sigBlock []byte
+	sigBlock, s.sigBlockOffset, err = s.findApkSigningBlock()
+	if err != nil {
+		err = &signingBlockNotFoundError{err}
+		return
+	}
+
 	pairs := bytes.NewReader(sigBlock[8 : len(sigBlock)-24])
 	entryCount := 0
 
@@ -368,15 +410,16 @@ func (s *signingBlock) findSignatureBlocks(sigBlock []byte, maxSdkVersion int32,
 	return
 }
 
-func (s *signingBlock) verify(scheme signatureBlockScheme, block []byte, minSdkVersion, maxSdkVersion int32, res *VerificationResult) {
+func (s *signingBlock) extractCerts(scheme signatureBlockScheme, block []byte, res *VerificationResult) map[crypto.Hash][]byte {
 	contentDigests := make(map[crypto.Hash][]byte)
 	signatureBlock := bytes.NewBuffer(block)
 
 	scheme.parseSigners(signatureBlock, contentDigests, res)
-	if res.ContainsErrors() {
-		return
-	}
+	return contentDigests
+}
 
+func (s *signingBlock) verify(scheme signatureBlockScheme, block []byte, minSdkVersion, maxSdkVersion int32, res *VerificationResult) {
+	contentDigests := s.extractCerts(scheme, block, res)
 	if len(res.Certs) == 0 {
 		res.addError("no signers found")
 		return

@@ -123,6 +123,28 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 	return
 }
 
+// Extract certs without verifying the signature.
+func ExtractCerts(path string, optionalZip *apkparser.ZipReader) ([][]*x509.Certificate, error) {
+	var err error
+	if optionalZip == nil {
+		optionalZip, err = apkparser.OpenZip(path)
+		if err != nil {
+			return nil, err
+		}
+		defer optionalZip.Close()
+	}
+
+	certs, signingBlockError := signingblock.ExtractCerts(path, -1, math.MaxInt32)
+	if !signingblock.IsSigningBlockNotFoundError(signingBlockError) {
+		return certs, signingBlockError
+	}
+
+	var certsv1 [][]*x509.Certificate
+	certsv1, err = extractCertsSchemeV1(optionalZip, -1, math.MaxInt32)
+	certs = append(certs, certsv1...)
+	return certs, err
+}
+
 type sandboxVersionEncoder struct {
 	minSdkVersion  int32
 	sandboxVersion int32
