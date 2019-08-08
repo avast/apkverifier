@@ -15,7 +15,7 @@ Documentation on [GoDoc](https://godoc.org/github.com/avast/apkverifier)
 ## Vendored stuff
 Because Android can handle even broken x509 cerficates and ZIP files, apkverifier is using the ZipReader from apkparser
 package and vendors `crypto/x509` in `internal/x509andr` and [github.com/fullsailor/pkcs7](https://github.com/fullsailor/pkcs7)
-in the `vendor/github.com/fullsailor/pkcs7` folder.
+in the `fullsailor/pkcs7` folder.
 The last two have some changes to handle some not-entirely-according-to-spec certificates.
 
 ## Example

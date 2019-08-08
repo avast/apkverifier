@@ -26,7 +26,7 @@ import (
 
 	"crypto/ecdsa"
 	"github.com/avast/apkparser"
-	"github.com/fullsailor/pkcs7"
+	"github.com/avast/apkverifier/fullsailor/pkcs7"
 )
 
 // These two arrays are synchronized
