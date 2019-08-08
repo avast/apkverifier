@@ -6,7 +6,8 @@ env:
   - GIMME_OS=windows GIMME_ARCH=amd64
 
 go:
-  - 1.8
+  - "1.8"
+  - "1.11" # uintptr -> unsafe.Pointer switch
   - 1.x
   - tip
 script: ./runtests.sh

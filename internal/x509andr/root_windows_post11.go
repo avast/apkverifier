@@ -1,4 +1,4 @@
-// +build windows,go1.12
+// +build windows,go1.11
 
 // Backport https://github.com/golang/go/commit/4869ec00e87ef49db2646c25d28d5c7e4f1caff8
 package x509andr

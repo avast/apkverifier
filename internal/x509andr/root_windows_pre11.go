@@ -1,4 +1,4 @@
-// +build windows,!go1.12
+// +build windows,!go1.11
 
 package x509andr
 
