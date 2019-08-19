@@ -1,13 +1,26 @@
 language: go
 
+os:
+  - linux
+  - windows
+  - osx
 env:
-  - GIMME_OS=linux GIMME_ARCH=amd64
-  - GIMME_OS=linux GIMME_ARCH=386
-  - GIMME_OS=windows GIMME_ARCH=amd64
-
+  - GIMME_ARCH=amd64
+  - GIMME_ARCH=386
 go:
   - "1.8"
   - "1.11" # uintptr -> unsafe.Pointer switch
   - 1.x
   - tip
+
+
+matrix:
+  exclude:
+    - os: windows
+      go: tip
+    - os: osx
+      go: tip
+    - os: osx   # 1.8 produces binaries broken on new osx
+      go: "1.8"
+
 script: ./runtests.sh

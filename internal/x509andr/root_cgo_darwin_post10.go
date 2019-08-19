@@ -20,7 +20,7 @@ package x509andr
 // which still works on OS X 10.8 (Mountain Lion).
 // It lacks support for admin & user cert domains.
 // See golang.org/issue/16473
-int FetchPEMRoots_MountainLion(CFDataRef *pemRoots) {
+static int FetchPEMRoots_MountainLion(CFDataRef *pemRoots) {
 	if (pemRoots == NULL) {
 		return -1;
 	}
@@ -59,7 +59,7 @@ int FetchPEMRoots_MountainLion(CFDataRef *pemRoots) {
 // best on older machines and continue to use the old code path.
 //
 // See golang.org/issue/16473
-int useOldCode() {
+static int useOldCode() {
 	char str[256];
 	size_t size = sizeof(str);
 	memset(str, 0, size);
@@ -77,7 +77,7 @@ int useOldCode() {
 //
 // Note: The CFDataRef returned in pemRoots and untrustedPemRoots must
 // be released (using CFRelease) after we've consumed its content.
-int FetchPEMRoots(CFDataRef *pemRoots, CFDataRef *untrustedPemRoots) {
+int apkverifier_FetchPEMRoots(CFDataRef *pemRoots, CFDataRef *untrustedPemRoots) {
 	if (useOldCode()) {
 		return FetchPEMRoots_MountainLion(pemRoots);
 	}
@@ -209,7 +209,7 @@ func loadSystemRoots() (*CertPool, error) {
 
 	var data C.CFDataRef = 0
 	var untrustedData C.CFDataRef = 0
-	err := C.FetchPEMRoots(&data, &untrustedData)
+	err := C.apkverifier_FetchPEMRoots(&data, &untrustedData)
 	if err == -1 {
 		// TODO: better error message
 		return nil, errors.New("crypto/x509: failed to load darwin system roots with cgo")
