@@ -7,4 +7,10 @@ else
     echo "Using cached apksig_for_test directory"
 fi
 
-APKSIG_PATH=apksig_for_tests go test -race -parallel 8 -v ./...
+export APKSIG_PATH=apksig_for_tests
+
+if ([ -n ${GIMME_ARCH+x} ] && [ "$GIMME_ARCH" = "amd64" ]) || ([ -z ${GIMME_ARCH+x} ] && go version | grep amd64 -q); then
+    go test -race -parallel 8 -v ./...
+else
+    go test -v ./...
+fi
