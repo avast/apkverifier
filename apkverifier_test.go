@@ -31,7 +31,7 @@ func Example() {
 	}
 }
 
-// From https://android.googlesource.com/platform/tools/apksig
+// From https://android.googlesource.com/platform/tools/apksig 5941d7112b28d5dada825aad757781f0b3ecf23b
 var (
 	DSA_KEY_NAMES                  = []string{"1024", "2048", "3072"}
 	DSA_KEY_NAMES_1024_AND_SMALLER = []string{"1024"}
@@ -166,6 +166,14 @@ func TestV3StrippedRejected(t *testing.T) {
 	// modifying the v3 block ID to be the verity padding block ID. Without the stripping
 	// protection this modification ignores the v3 signing scheme block.
 	assertVerificationFailure(t, "v3-stripped.apk", "was stripped, downgrade attack")
+}
+
+func TestSignaturesIgnoredForMaxSDK(t *testing.T) {
+	// The V2 signature scheme was introduced in N, and V3 was introduced in P. This test
+	// verifies a max SDK of pre-P ignores the V3 signature and a max SDK of pre-N ignores both
+	// the V2 and V3 signatures.
+	assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", -1, 26)
+	assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", -1, 23)
 }
 
 func TestV2OneSignerOneSignatureAccepted(t *testing.T) {

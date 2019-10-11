@@ -2,7 +2,7 @@
 set -eux
 
 if ! [ -d "apksig_for_tests" ]; then
-    git clone --depth=1 -b oreo-mr1-iot-release https://android.googlesource.com/platform/tools/apksig apksig_for_tests
+    git clone --depth=1 -b android-o-mr1-iot-release-1.0.14 https://android.googlesource.com/platform/tools/apksig apksig_for_tests
 else
     echo "Using cached apksig_for_test directory"
 fi
