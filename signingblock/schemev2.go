@@ -11,6 +11,7 @@ const (
 )
 
 type schemeV2 struct {
+	minSdkVersion, maxSdkVersion int32
 }
 
 func (s *schemeV2) parseSigners(block *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult) {
@@ -119,6 +120,10 @@ func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[cr
 
 		switch id {
 		case attrV2StrippingProtection:
+			if s.maxSdkVersion < 28 {
+				break
+			}
+
 			var strippedSchemeId int32
 			if err := binary.Read(attribute, binary.LittleEndian, &strippedSchemeId); err != nil {
 				result.addError("failed to read additional attribute %d's strippedSchemeId: %s", additionalAttributeCount, err.Error())

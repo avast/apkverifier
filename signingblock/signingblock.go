@@ -99,7 +99,7 @@ func VerifySigningBlock(path string, minSdkVersion, maxSdkVersion int32) (res *V
 
 	var block []byte
 	var scheme signatureBlockScheme
-	res.SchemeId, scheme, block = s.pickScheme(blocks)
+	res.SchemeId, scheme, block = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
 
 	s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
 	err = res.GetLastError()
@@ -123,7 +123,7 @@ func ExtractCerts(path string, minSdkVersion, maxSdkVersion int32) (certs [][]*x
 
 	var block []byte
 	var scheme signatureBlockScheme
-	res.SchemeId, scheme, block = s.pickScheme(blocks)
+	res.SchemeId, scheme, block = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
 
 	s.extractCerts(scheme, block, res)
 	return res.Certs, res.GetLastError()
@@ -241,13 +241,13 @@ func (s *signingBlock) isZip64() bool {
 	return magic == zip64LocatorMagic
 }
 
-func (s *signingBlock) pickScheme(blocks map[int][]byte) (schemeId int, scheme signatureBlockScheme, block []byte) {
+func (s *signingBlock) pickScheme(blocks map[int][]byte, minSdkVersion, maxSdkVersion int32) (schemeId int, scheme signatureBlockScheme, block []byte) {
 	if block = blocks[schemeIdV3]; block != nil {
 		schemeId = schemeIdV3
 		scheme = &schemeV3{}
 	} else if block = blocks[schemeIdV2]; block != nil {
 		schemeId = schemeIdV2
-		scheme = &schemeV2{}
+		scheme = &schemeV2{minSdkVersion, maxSdkVersion}
 	} else {
 		panic("unhandled")
 	}
