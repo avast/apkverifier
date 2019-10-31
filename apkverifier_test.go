@@ -828,7 +828,6 @@ func verify(t *testing.T, name string, minSdkVersion, maxSdkVersion int32) (apkv
 	}
 
 	path := filepath.Join(apksigPath, "src/test/resources/com/android/apksig", name)
-
 	return apkverifier.VerifyWithSdkVersion(path, nil, minSdkVersion, maxSdkVersion)
 }
 

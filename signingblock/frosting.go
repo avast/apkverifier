@@ -16,7 +16,6 @@ import (
 	"io/ioutil"
 	"math"
 	"math/big"
-	"os"
 	"strings"
 )
 
@@ -350,8 +349,8 @@ func (f *frostingInfo) parse(block []byte) (string, []byte, error) {
 	return f.usedKeySha256, f.protobufInfo, err
 }
 
-func (f *frostingInfo) hashFileSection(hasher hash.Hash, apkFile *os.File, offset int64, size int) error {
-	if _, err := apkFile.Seek(offset, io.SeekStart); err != nil {
+func (f *frostingInfo) hashFileSection(hasher hash.Hash, r io.ReadSeeker, offset int64, size int) error {
+	if _, err := r.Seek(offset, io.SeekStart); err != nil {
 		return err
 	}
 
@@ -364,7 +363,7 @@ func (f *frostingInfo) hashFileSection(hasher hash.Hash, apkFile *os.File, offse
 			chunk = size - i
 		}
 
-		chunk, err = io.ReadFull(apkFile, buf[:chunk])
+		chunk, err = io.ReadFull(r, buf[:chunk])
 		if err == io.EOF {
 			if chunk <= 0 {
 				return err
@@ -378,10 +377,10 @@ func (f *frostingInfo) hashFileSection(hasher hash.Hash, apkFile *os.File, offse
 	return nil
 }
 
-func (f *frostingInfo) verifyApk(apkFile *os.File, signingBlockOffset int64, schemeV2block []byte, zipCdOffset, zipCdSize int64, eocdOrig []byte) error {
+func (f *frostingInfo) verifyApk(r io.ReadSeeker, signingBlockOffset int64, schemeV2block []byte, zipCdOffset, zipCdSize int64, eocdOrig []byte) error {
 	hasher := sha256.New()
 
-	if err := f.hashFileSection(hasher, apkFile, 0, int(signingBlockOffset)); err != nil {
+	if err := f.hashFileSection(hasher, r, 0, int(signingBlockOffset)); err != nil {
 		return fmt.Errorf("failed to hash apk: %s", err.Error())
 	}
 
@@ -390,7 +389,7 @@ func (f *frostingInfo) verifyApk(apkFile *os.File, signingBlockOffset int64, sch
 		hasher.Write(schemeV2block)
 	}
 
-	if err := f.hashFileSection(hasher, apkFile, zipCdOffset, int(zipCdSize)); err != nil {
+	if err := f.hashFileSection(hasher, r, zipCdOffset, int(zipCdSize)); err != nil {
 		return fmt.Errorf("failed to hash zip central directory: %s", err.Error())
 	}
 

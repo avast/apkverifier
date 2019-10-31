@@ -12,6 +12,7 @@ import (
 	"github.com/avast/apkverifier/signingblock"
 	"io"
 	"math"
+	"os"
 	"strconv"
 )
 
@@ -44,6 +45,21 @@ func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err erro
 	return VerifyWithSdkVersion(path, optionalZip, -1, math.MaxInt32)
 }
 
+// Calls VerifyWithSdkVersionReader with sdk versions <-1;Math.MaxInt32>
+func VerifyReader(r io.ReadSeeker, optionalZip *apkparser.ZipReader) (res Result, err error) {
+	return VerifyWithSdkVersionReader(r, optionalZip, -1, math.MaxInt32)
+}
+
+// see VerifyWithSdkVersionReader
+func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkVersion, maxSdkVersion int32) (res Result, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return Result{}, err
+	}
+	defer f.Close()
+	return VerifyWithSdkVersionReader(f, optionalZip, minSdkVersion, maxSdkVersion)
+}
+
 // Verify the application signature. If err is nil, the signature is correct,
 // otherwise it is not and res may or may not contain extracted certificates,
 // depending on how the signature verification failed.
@@ -52,9 +68,9 @@ func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err erro
 // minSdkVersion and maxSdkVersion means the apk has to successfuly verify on real devices with sdk version
 // inside the <minSdkVersion;maxSdkVersion> interval.
 // minSdkVersion == -1 means it will obtain the minSdkVersion from AndroidManifest.
-func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkVersion, maxSdkVersion int32) (res Result, err error) {
+func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReader, minSdkVersion, maxSdkVersion int32) (res Result, err error) {
 	if optionalZip == nil {
-		optionalZip, err = apkparser.OpenZip(path)
+		optionalZip, err = apkparser.OpenZipReader(r)
 		if err != nil {
 			return Result{}, err
 		}
@@ -82,7 +98,7 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 
 	var fileMagic uint32
 	var signingBlockError error
-	res.SigningBlockResult, fileMagic, signingBlockError = signingblock.VerifySigningBlock(path, minSdkVersion, maxSdkVersion)
+	res.SigningBlockResult, fileMagic, signingBlockError = signingblock.VerifySigningBlockReader(r, minSdkVersion, maxSdkVersion)
 
 	if res.SigningBlockResult != nil {
 		res.SignerCerts = res.SigningBlockResult.Certs
@@ -93,7 +109,7 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 		res.SigningSchemeId = 1
 	} else if signingBlockError != nil {
 		return res, signingBlockError
-	} else if minSdkVersion >= 24 && signingBlockError == nil { // If verifying for sdk higher than 24, the app does not need v1 signature
+	} else if minSdkVersion >= 24 { // If verifying for sdk higher than 24, the app does not need v1 signature
 		return res, nil
 	}
 
@@ -125,16 +141,25 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 
 // Extract certs without verifying the signature.
 func ExtractCerts(path string, optionalZip *apkparser.ZipReader) ([][]*x509.Certificate, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return ExtractCertsReader(f, optionalZip)
+}
+
+func ExtractCertsReader(r io.ReadSeeker, optionalZip *apkparser.ZipReader) ([][]*x509.Certificate, error) {
 	var err error
 	if optionalZip == nil {
-		optionalZip, err = apkparser.OpenZip(path)
+		optionalZip, err = apkparser.OpenZipReader(r)
 		if err != nil {
 			return nil, err
 		}
 		defer optionalZip.Close()
 	}
 
-	certs, signingBlockError := signingblock.ExtractCerts(path, -1, math.MaxInt32)
+	certs, signingBlockError := signingblock.ExtractCertsReader(r, -1, math.MaxInt32)
 	if !signingblock.IsSigningBlockNotFoundError(signingBlockError) {
 		return certs, signingBlockError
 	}

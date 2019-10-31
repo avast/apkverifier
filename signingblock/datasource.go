@@ -3,7 +3,6 @@ package signingblock
 import (
 	"errors"
 	"io"
-	"os"
 )
 
 type dataSource interface {
@@ -13,7 +12,7 @@ type dataSource interface {
 }
 
 type dataSourceApk struct {
-	file       *os.File
+	file       io.ReadSeeker
 	start, end int64
 }
 

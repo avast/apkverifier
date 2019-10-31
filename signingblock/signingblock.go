@@ -57,7 +57,7 @@ type signatureBlockScheme interface {
 }
 
 type signingBlock struct {
-	file             *os.File
+	file             io.ReadSeeker
 	fileSize         int64
 	eocdOffset       int64
 	centralDirOffset int64
@@ -80,17 +80,25 @@ func IsSigningBlockNotFoundError(err error) bool {
 }
 
 func VerifySigningBlock(path string, minSdkVersion, maxSdkVersion int32) (res *VerificationResult, magic uint32, err error) {
-	var s *signingBlock
-	s, magic, err = newSigningBlock(path, maxSdkVersion)
+	f, err := os.Open(path)
 	if err != nil {
 		return
 	}
-	defer s.Close()
+	defer f.Close()
+	return VerifySigningBlockReader(f, minSdkVersion, maxSdkVersion)
+}
+
+func VerifySigningBlockReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (res *VerificationResult, magic uint32, err error) {
+	var s *signingBlock
+	s, magic, err = newSigningBlock(r, maxSdkVersion)
+	if err != nil {
+		return
+	}
 
 	res = &VerificationResult{}
 	blocks, frosting, err := s.findSignatureBlocks(maxSdkVersion, res)
 	if frosting != nil && res.Frosting.Error == nil {
-		res.Frosting.Error = frosting.verifyApk(s.file, s.sigBlockOffset, blocks[schemeIdV2], s.centralDirOffset, s.centralDirSize, s.eocd)
+		res.Frosting.Error = frosting.verifyApk(r, s.sigBlockOffset, blocks[schemeIdV2], s.centralDirOffset, s.centralDirSize, s.eocd)
 	}
 	if err != nil {
 		err = &signingBlockNotFoundError{err}
@@ -107,12 +115,20 @@ func VerifySigningBlock(path string, minSdkVersion, maxSdkVersion int32) (res *V
 }
 
 func ExtractCerts(path string, minSdkVersion, maxSdkVersion int32) (certs [][]*x509.Certificate, err error) {
-	var s *signingBlock
-	s, _, err = newSigningBlock(path, maxSdkVersion)
+	f, err := os.Open(path)
 	if err != nil {
 		return
 	}
-	defer s.Close()
+	defer f.Close()
+	return ExtractCertsReader(f, minSdkVersion, maxSdkVersion)
+}
+
+func ExtractCertsReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (certs [][]*x509.Certificate, err error) {
+	var s *signingBlock
+	s, _, err = newSigningBlock(r, maxSdkVersion)
+	if err != nil {
+		return
+	}
 
 	res := &VerificationResult{}
 	blocks, _, err := s.findSignatureBlocks(maxSdkVersion, res)
@@ -129,41 +145,36 @@ func ExtractCerts(path string, minSdkVersion, maxSdkVersion int32) (certs [][]*x
 	return res.Certs, res.GetLastError()
 }
 
-func newSigningBlock(path string, maxSdkVersion int32) (sblock *signingBlock, magic uint32, err error) {
+func newSigningBlock(r io.ReadSeeker, maxSdkVersion int32) (sblock *signingBlock, magic uint32, err error) {
 	if maxSdkVersion < sdkVersionN {
 		err = &signingBlockNotFoundError{errors.New("unsupported SDK version, requires at least N")}
 		return
 	}
 
-	f, err := os.Open(path)
+	size, err := r.Seek(0, io.SeekEnd)
 	if err != nil {
+		err = fmt.Errorf("failed to seek to the end of the APK file: %s", err.Error())
+	}
+
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		err = fmt.Errorf("failed to seek to the start of the APK file: %s", err.Error())
+	}
+
+	if size < 4 {
+		err = fmt.Errorf("APK file is too short (%d bytes).", size)
 		return
 	}
 
-	fi, err := f.Stat()
-	if err != nil {
-		return
-	}
-
-	if fi.Size() < 4 {
-		err = fmt.Errorf("APK file is too short (%d bytes).", fi.Size())
-		return
-	}
-
-	if err = binary.Read(f, binary.LittleEndian, &magic); err != nil {
+	if err = binary.Read(r, binary.LittleEndian, &magic); err != nil {
 		err = fmt.Errorf("Failed to read APK magic: %s", err.Error())
 		return
 	}
 
 	sblock = &signingBlock{
-		file:     f,
-		fileSize: fi.Size(),
+		file:     r,
+		fileSize: size,
 	}
 	return
-}
-
-func (s *signingBlock) Close() error {
-	return s.file.Close()
 }
 
 func (s *signingBlock) findEocd() error {
