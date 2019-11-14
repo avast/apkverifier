@@ -13,12 +13,7 @@ jobs:
           - "1.8"
           - "1.11"
           - "1.x"
-          - "tip"
         exclude:
-          - os: windows-latest
-            go-version: "tip" 
-          - os: macOS-latest
-            go-version: "tip" 
           - os: macOS-latest
             go-version: "1.8" 
     runs-on: ${{matrix.os}}
