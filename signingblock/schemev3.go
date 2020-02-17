@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/avast/apkverifier/apilevel"
 	"sort"
 )
 
@@ -51,8 +52,8 @@ func (s *schemeV3) parseSigners(block *bytes.Buffer, contentDigests map[crypto.H
 func (s *schemeV3) finalizeResult(requestedMinSdkVersion, requestedMaxSdkVersion int32, result *VerificationResult) {
 	// v3 didn't exist prior to P, so make sure that we're only judging v3 on its supported
 	// platforms
-	if requestedMinSdkVersion < sdkVersionP {
-		requestedMinSdkVersion = sdkVersionP
+	if requestedMinSdkVersion < apilevel.V9_0_Pie {
+		requestedMinSdkVersion = apilevel.V9_0_Pie
 	}
 
 	sort.Slice(s.signers, func(i, j int) bool {

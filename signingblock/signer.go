@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"fmt"
+	"github.com/avast/apkverifier/apilevel"
 	"math"
 )
 
@@ -80,13 +81,13 @@ func (algo SignatureAlgorithm) getDigestType() crypto.Hash {
 	}
 }
 
-func (algo SignatureAlgorithm) getMinSdkVersion() int {
+func (algo SignatureAlgorithm) getMinSdkVersion() int32 {
 	switch algo {
 	case SigRsaPssWithSha512, SigRsaPkcs1V15WithSha256, SigRsaPkcs1V15WithSha512,
 		SigEcdsaWithSha256, SigEcdsaWithSha512, SigDsaWithSha256:
-		return sdkVersionN
+		return apilevel.V7_0_Nougat
 	case SigVerityRsaPkcs1V15WithSha256, SigVerityEcdsaWithSha256, SigVerityDsaWithSha256:
-		return sdkVersionP
+		return apilevel.V9_0_Pie
 	default:
 		return math.MaxInt32
 	}

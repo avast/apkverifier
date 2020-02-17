@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/avast/apkverifier/apilevel"
 	"hash"
 	"io"
 	"math"
@@ -41,9 +42,6 @@ const (
 	schemeIdV3 = 3
 
 	maxChunkSize = 1024 * 1024
-
-	sdkVersionN = 24
-	sdkVersionP = 28
 )
 
 var (
@@ -146,7 +144,7 @@ func ExtractCertsReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (ce
 }
 
 func newSigningBlock(r io.ReadSeeker, maxSdkVersion int32) (sblock *signingBlock, magic uint32, err error) {
-	if maxSdkVersion < sdkVersionN {
+	if !apilevel.SupportsSigV2(maxSdkVersion) {
 		err = &signingBlockNotFoundError{errors.New("unsupported SDK version, requires at least N")}
 		return
 	}
@@ -376,7 +374,7 @@ func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *Verificatio
 
 		switch id {
 		case blockIdSchemeV3:
-			if maxSdkVersion >= sdkVersionP {
+			if apilevel.SupportsSigV3(maxSdkVersion) {
 				block := make([]byte, entryLen-4)
 				if _, err = pairs.Read(block); err != nil {
 					return

@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"github.com/avast/apkverifier/apilevel"
 	"io"
 )
 
@@ -95,8 +96,8 @@ func (l V3LineageSigningCertificateNodeList) Equal(o V3LineageSigningCertificate
 	return true
 }
 
-func lineageCalculateMinSdkVersion(nodes V3LineageSigningCertificateNodeList) int {
-	minSdkVersion := 28 // lineage introduced in P
+func lineageCalculateMinSdkVersion(nodes V3LineageSigningCertificateNodeList) int32 {
+	minSdkVersion := apilevel.V9_0_Pie // lineage introduced in P
 	for _, n := range nodes {
 		if n.SigAlgorithm.isSupported() {
 			if nmin := n.SigAlgorithm.getMinSdkVersion(); nmin > minSdkVersion {
@@ -108,7 +109,7 @@ func lineageCalculateMinSdkVersion(nodes V3LineageSigningCertificateNodeList) in
 }
 
 type V3SigningLineage struct {
-	MinSdkVersion int
+	MinSdkVersion int32
 	Nodes         V3LineageSigningCertificateNodeList
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"encoding/binary"
+	"github.com/avast/apkverifier/apilevel"
 )
 
 const (
@@ -120,7 +121,7 @@ func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[cr
 
 		switch id {
 		case attrV2StrippingProtection:
-			if s.maxSdkVersion < 28 {
+			if !apilevel.SupportsSigV3(s.maxSdkVersion) {
 				break
 			}
 

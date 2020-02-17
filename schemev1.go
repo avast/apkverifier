@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/avast/apkverifier/apilevel"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -329,7 +330,7 @@ func (p *schemeV1) verify(apk *apkparser.ZipReader, hasValidSigningBlock bool, m
 		}
 
 		sm := sig.signatureManifest
-		if idList, prs := sm.main[attrAndroidApkSigned]; !hasValidSigningBlock && prs && maxSdkVersion >= 24 {
+		if idList, prs := sm.main[attrAndroidApkSigned]; !hasValidSigningBlock && prs && apilevel.SupportsSigV2(maxSdkVersion) {
 			tokens := strings.Split(idList, ",")
 			for _, tok := range tokens {
 				tok = strings.TrimSpace(tok)
@@ -627,7 +628,7 @@ func (p *schemeV1) verifySignature(sig *schemeV1Signature, minSdkVersion, maxSdk
 	// Prior to Android N, Android attempts to verify only the first SignerInfo. From N
 	// onwards, Android attempts to verify all SignerInfos and then picks the first verified
 	// SignerInfo.
-	if minSdkVersion < 24 {
+	if minSdkVersion < apilevel.V7_0_Nougat {
 		signers = signers[:1]
 	}
 
@@ -690,11 +691,11 @@ func (p *schemeV1) verifySignature(sig *schemeV1Signature, minSdkVersion, maxSdk
 			//
 			// We thus reject such unsafe APKs, even if they verify on platforms before
 			// KitKat.
-			if minSdkVersion < 19 {
+			if minSdkVersion < apilevel.V4_4_KitKat {
 				return chain, errors.New("APKs with Signed Attributes broken on platforms API LEVEL < 19")
 			}
 
-			if maxSdkVersion >= 24 {
+			if maxSdkVersion >= apilevel.V7_0_Nougat {
 				var typeVal asn1.ObjectIdentifier
 				if err := info.UnmarshalSignedAttribute(oidAttributeContentType, &typeVal); err != nil {
 					return chain, fmt.Errorf("failed to parse signed content type: %s", err.Error())

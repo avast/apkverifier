@@ -9,9 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/avast/apkparser"
+	"github.com/avast/apkverifier/apilevel"
 	"github.com/avast/apkverifier/signingblock"
 	"io"
-	"math"
 	"os"
 	"strconv"
 )
@@ -40,14 +40,14 @@ const (
 	dexHeaderMagic uint32 = 0xa786564 // "dex\n", littleendinan
 )
 
-// Calls VerifyWithSdkVersion with sdk versions <-1;Math.MaxInt32>
+// Calls VerifyWithSdkVersion with sdk versions <apilevel.V_AnyMin; apilevel.V_AnyMax>
 func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err error) {
-	return VerifyWithSdkVersion(path, optionalZip, -1, math.MaxInt32)
+	return VerifyWithSdkVersion(path, optionalZip, apilevel.V_AnyMin, apilevel.V_AnyMax)
 }
 
-// Calls VerifyWithSdkVersionReader with sdk versions <-1;Math.MaxInt32>
+// Calls VerifyWithSdkVersionReader with sdk versions <apilevel.V_AnyMin; apilevel.V_AnyMax>
 func VerifyReader(r io.ReadSeeker, optionalZip *apkparser.ZipReader) (res Result, err error) {
-	return VerifyWithSdkVersionReader(r, optionalZip, -1, math.MaxInt32)
+	return VerifyWithSdkVersionReader(r, optionalZip, apilevel.V_AnyMin, apilevel.V_AnyMax)
 }
 
 // see VerifyWithSdkVersionReader
@@ -67,7 +67,7 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 // This method will not close it.
 // minSdkVersion and maxSdkVersion means the apk has to successfuly verify on real devices with sdk version
 // inside the <minSdkVersion;maxSdkVersion> interval.
-// minSdkVersion == -1 means it will obtain the minSdkVersion from AndroidManifest.
+// minSdkVersion == apilevel.V_AnyMin means it will obtain the minSdkVersion from AndroidManifest.
 func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReader, minSdkVersion, maxSdkVersion int32) (res Result, err error) {
 	if optionalZip == nil {
 		optionalZip, err = apkparser.OpenZipReader(r)
@@ -79,13 +79,13 @@ func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReade
 
 	var sandboxVersion int32
 	var manifestError error
-	if minSdkVersion == -1 || maxSdkVersion >= 26 {
+	if minSdkVersion == apilevel.V_AnyMin || apilevel.RequiresSandboxV2(maxSdkVersion) {
 		var manifestMinSdkVersion int32
 		manifestMinSdkVersion, sandboxVersion, err = getManifestInfo(optionalZip)
 		if err != nil {
 			manifestError = err
 		} else {
-			if minSdkVersion == -1 {
+			if minSdkVersion == apilevel.V_AnyMin {
 				minSdkVersion = manifestMinSdkVersion
 			}
 		}
@@ -109,14 +109,14 @@ func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReade
 		res.SigningSchemeId = 1
 	} else if signingBlockError != nil {
 		return res, signingBlockError
-	} else if minSdkVersion >= 24 { // If verifying for sdk higher than 24, the app does not need v1 signature
+	} else if apilevel.SupportsSigV2(minSdkVersion) {
 		return res, nil
 	}
 
 	// Android O and newer requires that APKs targeting security sandbox version 2 and higher
 	// are signed using APK Signature Scheme v2 or newer.
 	var sandboxError error
-	if maxSdkVersion >= 26 && sandboxVersion > 1 && (signingBlockError != nil || res.SigningSchemeId < 2) {
+	if apilevel.RequiresSandboxV2(maxSdkVersion) && sandboxVersion > 1 && (signingBlockError != nil || res.SigningSchemeId < 2) {
 		sandboxError = fmt.Errorf("no valid signature for sandbox version %d", sandboxVersion)
 	}
 
@@ -159,13 +159,13 @@ func ExtractCertsReader(r io.ReadSeeker, optionalZip *apkparser.ZipReader) ([][]
 		defer optionalZip.Close()
 	}
 
-	certs, signingBlockError := signingblock.ExtractCertsReader(r, -1, math.MaxInt32)
+	certs, signingBlockError := signingblock.ExtractCertsReader(r, apilevel.V_AnyMin, apilevel.V_AnyMax)
 	if !signingblock.IsSigningBlockNotFoundError(signingBlockError) {
 		return certs, signingBlockError
 	}
 
 	var certsv1 [][]*x509.Certificate
-	certsv1, err = extractCertsSchemeV1(optionalZip, -1, math.MaxInt32)
+	certsv1, err = extractCertsSchemeV1(optionalZip, apilevel.V_AnyMin, apilevel.V_AnyMax)
 	certs = append(certs, certsv1...)
 	return certs, err
 }
@@ -232,7 +232,7 @@ func getManifestInfo(zip *apkparser.ZipReader) (minSdkVersion, sandboxVersion in
 
 	for manifest.Next() {
 		enc := sandboxVersionEncoder{1, 1}
-		if err = apkparser.ParseManifest(manifest, &enc, nil); err != nil {
+		if err = apkparser.ParseXml(manifest, &enc, nil); err != nil {
 			err = fmt.Errorf("failed to parse AndroidManifest.xml: %s", err.Error())
 			return
 		}

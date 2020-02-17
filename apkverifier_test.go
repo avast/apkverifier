@@ -8,8 +8,8 @@ import (
 	"encoding/pem"
 	"fmt"
 	"github.com/avast/apkverifier"
+	"github.com/avast/apkverifier/apilevel"
 	"io/ioutil"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,39 +172,39 @@ func TestSignaturesIgnoredForMaxSDK(t *testing.T) {
 	// The V2 signature scheme was introduced in N, and V3 was introduced in P. This test
 	// verifies a max SDK of pre-P ignores the V3 signature and a max SDK of pre-N ignores both
 	// the V2 and V3 signatures.
-	assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", -1, 26)
-	assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", -1, 23)
+	assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", apilevel.V_AnyMin, apilevel.V8_1_Oreo)
+	assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", apilevel.V_AnyMin, apilevel.V6_0_Marshmallow)
 }
 
 func TestV2OneSignerOneSignatureAccepted(t *testing.T) {
 	// APK signed with v2 scheme only, one signer, one signature
-	assertVerifiedForEachSdk(t, "v2-only-with-dsa-sha256-%s.apk", DSA_KEY_NAMES, 25, math.MaxInt32)
-	assertVerifiedForEachSdk(t, "v2-only-with-ecdsa-sha256-%s.apk", EC_KEY_NAMES, 25, math.MaxInt32)
-	assertVerifiedForEachSdk(t, "v2-only-with-rsa-pkcs1-sha256-%s.apk", RSA_KEY_NAMES, 25, math.MaxInt32)
+	assertVerifiedForEachSdk(t, "v2-only-with-dsa-sha256-%s.apk", DSA_KEY_NAMES, apilevel.V7_1_Nougat, apilevel.V_AnyMax)
+	assertVerifiedForEachSdk(t, "v2-only-with-ecdsa-sha256-%s.apk", EC_KEY_NAMES, apilevel.V7_1_Nougat, apilevel.V_AnyMax)
+	assertVerifiedForEachSdk(t, "v2-only-with-rsa-pkcs1-sha256-%s.apk", RSA_KEY_NAMES, apilevel.V7_1_Nougat, apilevel.V_AnyMax)
 	// RSA-PSS signatures tested in a separate test below
 	// DSA with SHA-512 is not supported by Android platform and thus APK Signature Scheme v2
 	// does not support that either
 	// assertInstallSucceedsForEach("v2-only-with-dsa-sha512-%s.apk", DSA_KEY_NAMES)
-	assertVerifiedForEachSdk(t, "v2-only-with-ecdsa-sha512-%s.apk", EC_KEY_NAMES, 25, math.MaxInt32)
-	assertVerifiedForEachSdk(t, "v2-only-with-rsa-pkcs1-sha512-%s.apk", RSA_KEY_NAMES, 25, math.MaxInt32)
+	assertVerifiedForEachSdk(t, "v2-only-with-ecdsa-sha512-%s.apk", EC_KEY_NAMES, apilevel.V7_1_Nougat, apilevel.V_AnyMax)
+	assertVerifiedForEachSdk(t, "v2-only-with-rsa-pkcs1-sha512-%s.apk", RSA_KEY_NAMES, apilevel.V7_1_Nougat, apilevel.V_AnyMax)
 }
 
 func TestV3OneSignerOneSignatureAccepted(t *testing.T) {
 	// APK signed with v3 scheme only, one signer, one signature
-	assertVerifiedForEachSdk(t, "v3-only-with-dsa-sha256-%s.apk", DSA_KEY_NAMES, 28, math.MaxInt32)
-	assertVerifiedForEachSdk(t, "v3-only-with-ecdsa-sha256-%s.apk", EC_KEY_NAMES, 28, math.MaxInt32)
-	assertVerifiedForEachSdk(t, "v3-only-with-rsa-pkcs1-sha256-%s.apk", RSA_KEY_NAMES, 28, math.MaxInt32)
+	assertVerifiedForEachSdk(t, "v3-only-with-dsa-sha256-%s.apk", DSA_KEY_NAMES, apilevel.V9_0_Pie, apilevel.V_AnyMax)
+	assertVerifiedForEachSdk(t, "v3-only-with-ecdsa-sha256-%s.apk", EC_KEY_NAMES, apilevel.V9_0_Pie, apilevel.V_AnyMax)
+	assertVerifiedForEachSdk(t, "v3-only-with-rsa-pkcs1-sha256-%s.apk", RSA_KEY_NAMES, apilevel.V9_0_Pie, apilevel.V_AnyMax)
 
-	assertVerifiedForEachSdk(t, "v3-only-with-ecdsa-sha512-%s.apk", EC_KEY_NAMES, 28, math.MaxInt32)
-	assertVerifiedForEachSdk(t, "v3-only-with-rsa-pkcs1-sha512-%s.apk", RSA_KEY_NAMES, 28, math.MaxInt32)
+	assertVerifiedForEachSdk(t, "v3-only-with-ecdsa-sha512-%s.apk", EC_KEY_NAMES, apilevel.V9_0_Pie, apilevel.V_AnyMax)
+	assertVerifiedForEachSdk(t, "v3-only-with-rsa-pkcs1-sha512-%s.apk", RSA_KEY_NAMES, apilevel.V9_0_Pie, apilevel.V_AnyMax)
 }
 
 func TestV2OneSignerOneRsaPssSignatureAccepted(t *testing.T) {
 	// APK signed with v2 scheme only, one signer, one signature
-	assertVerifiedForEachSdk(t, "v2-only-with-rsa-pss-sha256-%s.apk", RSA_KEY_NAMES, 25, math.MaxInt32)
+	assertVerifiedForEachSdk(t, "v2-only-with-rsa-pss-sha256-%s.apk", RSA_KEY_NAMES, apilevel.V7_1_Nougat, apilevel.V_AnyMax)
 	assertVerifiedForEachSdk(t, "v2-only-with-rsa-pss-sha512-%s.apk",
 		RSA_KEY_NAMES_2048_AND_LARGER, // 1024-bit key is too short for PSS with SHA-512
-		25, math.MaxInt32)
+		25, apilevel.V_AnyMax)
 }
 
 func TestV2SignatureDoesNotMatchSignedDataRejected(t *testing.T) {
@@ -306,28 +306,28 @@ func TestV2UnknownPairIgnoredInApkSigningBlock(t *testing.T) {
 	// Obtained by modifying APK signer to emit an unknown ID-value pair into APK Signing Block
 	// before the ID-value pair containing the APK Signature Scheme v2 Block. The unknown
 	// ID-value should be ignored.
-	assertVerifiedSdk(t, "v2-only-unknown-pair-in-apk-sig-block.apk", 25, math.MaxInt32)
+	assertVerifiedSdk(t, "v2-only-unknown-pair-in-apk-sig-block.apk", apilevel.V7_1_Nougat, apilevel.V_AnyMax)
 }
 
 func TestV3UnknownPairIgnoredInApkSigningBlock(t *testing.T) {
 	// Obtained by modifying APK signer to emit an unknown ID value pair into APK Signing Block
 	// before the ID value pair containing the APK Signature Scheme v3 Block. The unknown
 	// ID value should be ignored.
-	assertVerifiedSdk(t, "v3-only-unknown-pair-in-apk-sig-block.apk", 28, math.MaxInt32)
+	assertVerifiedSdk(t, "v3-only-unknown-pair-in-apk-sig-block.apk", apilevel.V9_0_Pie, apilevel.V_AnyMax)
 }
 
 func TestV2UnknownSignatureAlgorithmsIgnored(t *testing.T) {
 	// APK is signed with a known signature algorithm and with a couple of unknown ones.
 	// Obtained by modifying APK signer to use "unknown" signature algorithms in addition to
 	// known ones.
-	assertVerifiedSdk(t, "v2-only-with-ignorable-unsupported-sig-algs.apk", 25, math.MaxInt32)
+	assertVerifiedSdk(t, "v2-only-with-ignorable-unsupported-sig-algs.apk", apilevel.V7_1_Nougat, apilevel.V_AnyMax)
 }
 
 func TestV3UnknownSignatureAlgorithmsIgnored(t *testing.T) {
 	// APK is signed with a known signature algorithm and a couple of unknown ones.
 	// Obtained by modifying APK signer to use "unknown" signature algorithms in addition to
 	// known ones.
-	assertVerifiedSdk(t, "v3-only-with-ignorable-unsupported-sig-algs.apk", 28, math.MaxInt32)
+	assertVerifiedSdk(t, "v3-only-with-ignorable-unsupported-sig-algs.apk", apilevel.V9_0_Pie, apilevel.V_AnyMax)
 }
 
 func TestV3WithOnlyUnknownSignatureAlgorithmsRejected(t *testing.T) {
@@ -340,18 +340,18 @@ func TestV2UnknownAdditionalAttributeIgnored(t *testing.T) {
 	// APK's v2 signature contains an unknown additional attribute, but is otherwise fine.
 	// Obtained by modifying APK signer to output an additional attribute with ID 0x01020304
 	// and value 0x05060708.
-	assertVerifiedSdk(t, "v2-only-unknown-additional-attr.apk", 25, math.MaxInt32)
+	assertVerifiedSdk(t, "v2-only-unknown-additional-attr.apk", apilevel.V7_1_Nougat, apilevel.V_AnyMax)
 }
 
 func TestV3UnknownAdditionalAttributeIgnored(t *testing.T) {
 	// APK's v3 signature contains unknown additional attributes before and after the lineage.
 	// Obtained by modifying APK signer to output additional attributes with IDs 0x11223344
 	// and 0x99aabbcc with values 0x55667788 and 0xddeeff00
-	assertVerifiedSdk(t, "v3-only-unknown-additional-attr.apk", 28, math.MaxInt32)
+	assertVerifiedSdk(t, "v3-only-unknown-additional-attr.apk", apilevel.V9_0_Pie, apilevel.V_AnyMax)
 
 	// APK's v2 and v3 signatures contain unknown additional attributes before and after the
 	// anti-stripping and lineage attributes.
-	assertVerifiedSdk(t, "v2v3-unknown-additional-attr.apk", 28, math.MaxInt32)
+	assertVerifiedSdk(t, "v2v3-unknown-additional-attr.apk", apilevel.V9_0_Pie, apilevel.V_AnyMax)
 }
 
 func TestV2MismatchBetweenSignaturesAndDigestsBlockRejected(t *testing.T) {
@@ -398,7 +398,7 @@ func TestTwoSignersAccepted(t *testing.T) {
 	// APK signed by two different signers
 	assertVerified(t, "two-signers.apk")
 	assertVerified(t, "v1-only-two-signers.apk")
-	assertVerifiedSdk(t, "v2-only-two-signers.apk", 25, math.MaxInt32)
+	assertVerifiedSdk(t, "v2-only-two-signers.apk", apilevel.V7_1_Nougat, apilevel.V_AnyMax)
 }
 
 func TestV2TwoSignersRejectedWhenOneBroken(t *testing.T) {
@@ -500,18 +500,18 @@ func TestMaxSizedZipEocdCommentAccepted(t *testing.T) {
 	// Obtained by modifying apksigner to produce a max-sized (0xffff bytes long) ZIP End of
 	// Central Directory comment, and signing the original.apk using the modified apksigner.
 	assertVerified(t, "v1-only-max-sized-eocd-comment.apk")
-	assertVerifiedSdk(t, "v2-only-max-sized-eocd-comment.apk", 25, math.MaxInt32)
+	assertVerifiedSdk(t, "v2-only-max-sized-eocd-comment.apk", apilevel.V7_1_Nougat, apilevel.V_AnyMax)
 }
 
 func TestEmptyApk(t *testing.T) {
 	// Unsigned empty ZIP archive
-	assertVerificationFailureSdk(t, "empty-unsigned.apk", 1, math.MaxInt32, "No valid MANIFEST.SF")
+	assertVerificationFailureSdk(t, "empty-unsigned.apk", apilevel.V1_5_Cupcake, apilevel.V_AnyMax, "No valid MANIFEST.SF")
 	// JAR-signed empty ZIP archive
-	assertVerificationFailureSdk(t, "v1-only-empty.apk", 18, math.MaxInt32, "No manifest entry")
+	assertVerificationFailureSdk(t, "v1-only-empty.apk", apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "No manifest entry")
 	// APK Signature Scheme v2 signed empty ZIP archive
-	assertVerificationFailureSdk(t, "v2-only-empty.apk", 25, math.MaxInt32, "No valid MANIFEST.SF")
+	assertVerificationFailureSdk(t, "v2-only-empty.apk", apilevel.V7_1_Nougat, apilevel.V_AnyMax, "No valid MANIFEST.SF")
 	// APK Signature Scheme v3 signed empty ZIP archive
-	assertVerificationFailureSdk(t, "v3-only-empty.apk", 28, math.MaxInt32, "No valid MANIFEST.SF")
+	assertVerificationFailureSdk(t, "v3-only-empty.apk", apilevel.V9_0_Pie, apilevel.V_AnyMax, "No valid MANIFEST.SF")
 }
 
 func TestTargetSandboxVersion2AndHigher(t *testing.T) {
@@ -521,7 +521,7 @@ func TestTargetSandboxVersion2AndHigher(t *testing.T) {
 	assertVerified(t, "targetSandboxVersion-2.apk")
 	// v1 signature is needed only if minSdkVersion is lower than 24
 	assertVerificationFailure(t, "v2-only-targetSandboxVersion-2.apk", "No valid MANIFEST.SF")
-	assertVerifiedSdk(t, "v2-only-targetSandboxVersion-2.apk", 24, math.MaxInt32)
+	assertVerifiedSdk(t, "v2-only-targetSandboxVersion-2.apk", apilevel.V7_0_Nougat, apilevel.V_AnyMax)
 	// v2 signature is required
 	assertVerificationFailure(t, "v1-only-targetSandboxVersion-2.apk", "no valid signature for sandbox version")
 	assertVerificationFailure(t, "unsigned-targetSandboxVersion-2.apk", "no valid signature for sandbox version")
@@ -545,26 +545,26 @@ func TestV1MultipleDigestAlgsInManifestAndSignatureFile(t *testing.T) {
 	// The APK will fail to verify on API Level 17 and lower, but will verify on API Level 18
 	// and higher.
 	assertVerificationFailure(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-manifest.apk", "No matching hash for")
-	assertVerificationFailureSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-manifest.apk", -1, 17, "No matching hash for")
-	assertVerifiedSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-manifest.apk", 18, math.MaxInt32)
+	assertVerificationFailureSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-manifest.apk", apilevel.V_AnyMin, apilevel.V4_2_JellyBean, "No matching hash for")
+	assertVerifiedSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-manifest.apk", apilevel.V4_3_JellyBean, apilevel.V_AnyMax)
 	// SHA-1 digests in .SF are wrong, but SHA-256 digests are OK.
 	// The APK will fail to verify on API Level 17 and lower, but will verify on API Level 18
 	// and higher.
 	assertVerificationFailure(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-sf.apk", "Invalid hash of manifest entry")
-	assertVerificationFailureSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-sf.apk", -1, 17, "Invalid hash of manifest entry")
-	assertVerifiedSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-sf.apk", 18, math.MaxInt32)
+	assertVerificationFailureSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-sf.apk", apilevel.V_AnyMin, apilevel.V4_2_JellyBean, "Invalid hash of manifest entry")
+	assertVerifiedSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha1-wrong-in-sf.apk", apilevel.V4_3_JellyBean, apilevel.V_AnyMax)
 	// SHA-256 digests in MANIFEST.MF are wrong, but SHA-1 digests are OK.
 	// The APK will fail to verify on API Level 18 and higher, but will verify on API Level 17
 	// and lower.
 	assertVerificationFailure(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-manifest.apk", "No matching hash for")
-	assertVerificationFailureSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-manifest.apk", 18, math.MaxInt32, "No matching hash for")
-	assertVerifiedSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-manifest.apk", -1, 17)
+	assertVerificationFailureSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-manifest.apk", apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "No matching hash for")
+	assertVerifiedSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-manifest.apk", apilevel.V_AnyMin, apilevel.V4_2_JellyBean)
 	// SHA-256 digests in .SF are wrong, but SHA-1 digests are OK.
 	// The APK will fail to verify on API Level 18 and higher, but will verify on API Level 17
 	// and lower.
 	assertVerificationFailure(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-sf.apk", "Invalid hash of manifest entry")
-	assertVerificationFailureSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-sf.apk", 18, math.MaxInt32, "Invalid hash of manifest entry")
-	assertVerifiedSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-sf.apk", -1, 17)
+	assertVerificationFailureSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-sf.apk", apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "Invalid hash of manifest entry")
+	assertVerifiedSdk(t, "v1-sha1-sha256-manifest-and-sf-with-sha256-wrong-in-sf.apk", apilevel.V_AnyMin, apilevel.V4_2_JellyBean)
 }
 
 func TestV1WithUnsupportedCharacterInZipEntryName(t *testing.T) {
@@ -590,11 +590,11 @@ func TestZipCompressionMethodMismatchBetweenLfhAndCd(t *testing.T) {
 
 func TestV1SignedAttrs(t *testing.T) {
 	apk := "v1-only-with-signed-attrs.apk"
-	assertVerificationFailureSdk(t, apk, 18, math.MaxInt32, "APKs with Signed Attributes broken on platforms")
-	assertVerifiedSdk(t, apk, 19, math.MaxInt32)
+	assertVerificationFailureSdk(t, apk, apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "APKs with Signed Attributes broken on platforms")
+	assertVerifiedSdk(t, apk, apilevel.V4_4_KitKat, apilevel.V_AnyMax)
 	apk = "v1-only-with-signed-attrs-signerInfo1-good-signerInfo2-good.apk"
-	assertVerificationFailureSdk(t, apk, 18, math.MaxInt32, "APKs with Signed Attributes broken on platforms")
-	assertVerifiedSdk(t, apk, 19, math.MaxInt32)
+	assertVerificationFailureSdk(t, apk, apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "APKs with Signed Attributes broken on platforms")
+	assertVerifiedSdk(t, apk, apilevel.V4_4_KitKat, apilevel.V_AnyMax)
 }
 
 func TestV1SignedAttrsNotInDerOrder(t *testing.T) {
@@ -610,13 +610,13 @@ func TestV1SignedAttrsMissingContentType(t *testing.T) {
 	// SignedAttributes must contain ContentType. Pre-N, Android ignores this requirement.
 	// Android N onwards rejects such APKs.
 	apk := "v1-only-with-signed-attrs-missing-content-type.apk"
-	assertVerifiedSdk(t, apk, -1, 23)
+	assertVerifiedSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow)
 	assertVerificationFailure(t, apk, "failed to parse signed content type")
 	// Assert that this issue fails verification of the entire signature block, rather than
 	// skipping the broken SignerInfo. The second signer info SignerInfo verifies fine, but
 	// verification does not get there.
 	apk = "v1-only-with-signed-attrs-signerInfo1-missing-content-type-signerInfo2-good.apk"
-	assertVerifiedSdk(t, apk, -1, 23)
+	assertVerifiedSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow)
 	assertVerificationFailure(t, apk, "failed to parse signed content type")
 }
 
@@ -625,13 +625,13 @@ func TestV1SignedAttrsWrongContentType(t *testing.T) {
 	// Pre-N, Android ignores this requirement.
 	// From N onwards, Android rejects such SignerInfos.
 	apk := "v1-only-with-signed-attrs-wrong-content-type.apk"
-	assertVerifiedSdk(t, apk, -1, 23)
+	assertVerifiedSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow)
 	assertVerificationFailure(t, apk, "PKCS7 content type does not match")
 	// First SignerInfo does not verify on Android N and newer, but verification moves on to the
 	// second SignerInfo, which verifies.
 	apk = "v1-only-with-signed-attrs-signerInfo1-wrong-content-type-signerInfo2-good.apk"
-	assertVerifiedSdk(t, apk, -1, 23)
-	assertVerifiedSdk(t, apk, 24, math.MaxInt32)
+	assertVerifiedSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow)
+	assertVerifiedSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax)
 	// Although the APK's signature verifies on pre-N and N+, we reject such APKs because the
 	// APK's verification results in different verified SignerInfos (and thus potentially
 	// different signing certs) between pre-N and N+.
@@ -641,56 +641,56 @@ func TestV1SignedAttrsWrongContentType(t *testing.T) {
 func TestV1SignedAttrsMissingDigest(t *testing.T) {
 	// Content digest must be present in SignedAttributes
 	apk := "v1-only-with-signed-attrs-missing-digest.apk"
-	assertVerificationFailureSdk(t, apk, -1, 23, "failed to parse signed message digest")
-	assertVerificationFailureSdk(t, apk, 24, math.MaxInt32, "failed to parse signed message digest")
+	assertVerificationFailureSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow, "failed to parse signed message digest")
+	assertVerificationFailureSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax, "failed to parse signed message digest")
 	// Assert that this issue fails verification of the entire signature block, rather than
 	// skipping the broken SignerInfo. The second signer info SignerInfo verifies fine, but
 	// verification does not get there.
 	apk = "v1-only-with-signed-attrs-signerInfo1-missing-digest-signerInfo2-good.apk"
-	assertVerificationFailureSdk(t, apk, -1, 23, "failed to parse signed message digest")
-	assertVerificationFailureSdk(t, apk, 24, math.MaxInt32, "failed to parse signed message digest")
+	assertVerificationFailureSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow, "failed to parse signed message digest")
+	assertVerificationFailureSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax, "failed to parse signed message digest")
 }
 
 func TestV1SignedAttrsMultipleGoodDigests(t *testing.T) {
 	// Only one content digest must be present in SignedAttributes
 	apk := "v1-only-with-signed-attrs-multiple-good-digests.apk"
-	assertVerificationFailureSdk(t, apk, -1, 23, "failed to parse signed message digest")
-	assertVerificationFailureSdk(t, apk, 24, math.MaxInt32, "failed to parse signed message digest")
+	assertVerificationFailureSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow, "failed to parse signed message digest")
+	assertVerificationFailureSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax, "failed to parse signed message digest")
 	// Assert that this issue fails verification of the entire signature block, rather than
 	// skipping the broken SignerInfo. The second signer info SignerInfo verifies fine, but
 	// verification does not get there.
 	apk = "v1-only-with-signed-attrs-signerInfo1-multiple-good-digests-signerInfo2-good.apk"
-	assertVerificationFailureSdk(t, apk, -1, 23, "failed to parse signed message digest")
-	assertVerificationFailureSdk(t, apk, 24, math.MaxInt32, "failed to parse signed message digest")
+	assertVerificationFailureSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow, "failed to parse signed message digest")
+	assertVerificationFailureSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax, "failed to parse signed message digest")
 }
 
 func TestV1SignedAttrsWrongDigest(t *testing.T) {
 	// Content digest in SignedAttributes does not match the contents
 	apk := "v1-only-with-signed-attrs-wrong-digest.apk"
-	assertVerificationFailureSdk(t, apk, -1, 23, "signedAttributes hash mismatch")
-	assertVerificationFailureSdk(t, apk, 24, math.MaxInt32, "signedAttributes hash mismatch")
+	assertVerificationFailureSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow, "signedAttributes hash mismatch")
+	assertVerificationFailureSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax, "signedAttributes hash mismatch")
 	// First SignerInfo does not verify, but Android N and newer moves on to the second
 	// SignerInfo, which verifies.
 	apk = "v1-only-with-signed-attrs-signerInfo1-wrong-digest-signerInfo2-good.apk"
-	assertVerificationFailureSdk(t, apk, -1, 23, "signedAttributes hash mismatch")
-	assertVerifiedSdk(t, apk, 24, math.MaxInt32)
+	assertVerificationFailureSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow, "signedAttributes hash mismatch")
+	assertVerifiedSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax)
 }
 
 func TestV1SignedAttrsWrongSignature(t *testing.T) {
 	// Signature over SignedAttributes does not verify
 	apk := "v1-only-with-signed-attrs-wrong-signature.apk"
-	assertVerificationFailureSdk(t, apk, -1, 23, "verification error")
-	assertVerificationFailureSdk(t, apk, 24, math.MaxInt32, "verification error")
+	assertVerificationFailureSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow, "verification error")
+	assertVerificationFailureSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax, "verification error")
 	// First SignerInfo does not verify, but Android N and newer moves on to the second
 	// SignerInfo, which verifies.
 	apk = "v1-only-with-signed-attrs-signerInfo1-wrong-signature-signerInfo2-good.apk"
-	assertVerificationFailureSdk(t, apk, -1, 23, "verification error")
-	assertVerifiedSdk(t, apk, 24, math.MaxInt32)
+	assertVerificationFailureSdk(t, apk, apilevel.V_AnyMin, apilevel.V6_0_Marshmallow, "verification error")
+	assertVerifiedSdk(t, apk, apilevel.V7_0_Nougat, apilevel.V_AnyMax)
 }
 
 // Lineage tests
 func TestLineageFromAPKContainsExpectedSigners(t *testing.T) {
-	res := assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", 24, math.MaxInt32)
+	res := assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", apilevel.V7_0_Nougat, apilevel.V_AnyMax)
 	if res.SigningBlockResult == nil {
 		t.Fatalf("no signing block found")
 	} else if res.SigningBlockResult.SigningLineage == nil {
@@ -738,7 +738,7 @@ func TestLineageFromAPKWithInvalidZipCDSizeFails(t *testing.T) {
 	// sections cannot be parsed fails. This APK is based off the
 	// v1v2v3-with-rsa-2048-lineage-3-signers.apk with a modified CD size in the EoCD.
 	assertVerificationFailureSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers-invalid-zip.apk",
-		24, math.MaxInt32, anyErrorString)
+		24, apilevel.V_AnyMax, anyErrorString)
 }
 
 func TestLineageFromAPKWithNoLineageFails(t *testing.T) {
@@ -756,7 +756,7 @@ func TestLineageFromAPKWithNoLineageFails(t *testing.T) {
 }
 
 func assertVerifiedForEach(t *testing.T, format string, names []string) {
-	assertVerifiedForEachSdk(t, format, names, -1, math.MaxInt32)
+	assertVerifiedForEachSdk(t, format, names, apilevel.V_AnyMin, apilevel.V_AnyMax)
 }
 
 func assertVerifiedForEachSdk(t *testing.T, format string, names []string, minSdkVersion, maxSdkVersion int32) {
@@ -766,7 +766,7 @@ func assertVerifiedForEachSdk(t *testing.T, format string, names []string, minSd
 }
 
 func assertVerified(t *testing.T, name string) apkverifier.Result {
-	return assertVerifiedSdk(t, name, -1, math.MaxInt32)
+	return assertVerifiedSdk(t, name, apilevel.V_AnyMin, apilevel.V_AnyMax)
 }
 
 func assertVerifiedSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion int32) apkverifier.Result {
@@ -780,7 +780,7 @@ func assertVerifiedSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion i
 }
 
 func assertVerificationFailure(t *testing.T, name string, expectedError string) {
-	assertVerificationFailureSdk(t, name, -1, math.MaxInt32, expectedError)
+	assertVerificationFailureSdk(t, name, apilevel.V_AnyMin, apilevel.V_AnyMax, expectedError)
 }
 
 func assertVerificationFailureSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion int32, expectedError string) {
@@ -811,7 +811,7 @@ fail:
 }
 
 func assertNoLineage(t *testing.T, name string, mustVerify bool) {
-	res, err := verify(t, name, -1, math.MaxInt32)
+	res, err := verify(t, name, apilevel.V_AnyMin, apilevel.V_AnyMax)
 	if mustVerify != (err == nil) {
 		t.Fatalf("%s has wrong verification result %v, expected %v", name, err, mustVerify)
 	} else if res.SigningBlockResult == nil {
