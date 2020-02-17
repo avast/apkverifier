@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/avast/apkverifier/apilevel"
 	"io"
+	"strings"
 )
 
 type V3LineageSigningCertificateNode struct {
@@ -15,7 +16,48 @@ type V3LineageSigningCertificateNode struct {
 	ParentSigAlgorithm SignatureAlgorithm
 	SigAlgorithm       SignatureAlgorithm
 	Signature          []byte
-	Flags              int32
+	Flags              LineageCertCaps
+}
+
+// frameworks/base/core/java/android/content/pm/PackageParser.java
+// public @interface CertCapabilities
+type LineageCertCaps int32
+
+const (
+	CapInstalledData LineageCertCaps = 1  // accept data from already installed pkg with this cert
+	CapSharedUserId  LineageCertCaps = 2  // accept sharedUserId with pkg with this cert
+	CapPermission    LineageCertCaps = 4  // grant SIGNATURE permissions to pkgs with this cert
+	CapRollback      LineageCertCaps = 8  // allow pkg to update to one signed by this certificate
+	CapAuth          LineageCertCaps = 16 // allow pkg to continue to have auth access gated by this cert
+)
+
+func (c LineageCertCaps) String() string {
+	var values []string
+	for i := uint(0); i < 31; i++ {
+		mask := LineageCertCaps(1 << i)
+		if (c & mask) == 0 {
+			continue
+		}
+		switch mask {
+		case CapInstalledData:
+			values = append(values, "InstalledData")
+		case CapSharedUserId:
+			values = append(values, "SharedUserId")
+		case CapPermission:
+			values = append(values, "Permission")
+		case CapRollback:
+			values = append(values, "Rollback")
+		case CapAuth:
+			values = append(values, "Auth")
+		default:
+			values = append(values, fmt.Sprintf("0x%x", mask))
+		}
+	}
+
+	if len(values) != 0 {
+		return strings.Join(values, "|")
+	}
+	return "None"
 }
 
 func (n *V3LineageSigningCertificateNode) Equal(o *V3LineageSigningCertificateNode) bool {
@@ -75,7 +117,7 @@ func (n *V3LineageSigningCertificateNode) Dump(w io.Writer) error {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(w, "Flags: 0x%04x\n", n.Flags); err != nil {
+	if _, err := fmt.Fprintf(w, "Flags: 0x%04x (%s)\n", uint32(n.Flags), n.Flags.String()); err != nil {
 		return err
 	}
 	return nil

@@ -331,7 +331,7 @@ func (s *schemeV3) readSigningCertificateLineage(lineageSlice *bytes.Buffer) (V3
 			ParentSigAlgorithm: signedSigAlgorithm,
 			SigAlgorithm:       sigAlgorithmId,
 			Signature:          signature.Bytes(),
-			Flags:              flags,
+			Flags:              LineageCertCaps(flags),
 		})
 	}
 
