@@ -19,6 +19,7 @@ import (
 	_ "crypto/sha1"
 	_ "crypto/sha256"
 	_ "crypto/sha512"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
@@ -27,8 +28,13 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"os"
+	"reflect"
 	"strconv"
+	"sync/atomic"
 	"time"
+
+	"github.com/avast/apkverifier/internal/asn1andr"
 )
 
 const tagNull = 5
@@ -55,7 +61,7 @@ type pkixPublicKey struct {
 // or *ecdsa.PublicKey.
 func ParsePKIXPublicKey(derBytes []byte) (pub interface{}, err error) {
 	var pki publicKeyInfo
-	if rest, err := asn1.Unmarshal(derBytes, &pki); err != nil {
+	if rest, err := asn1andr.Unmarshal(derBytes, &pki); err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
 		return nil, errors.New("x509: trailing data after ASN.1 of public-key")
@@ -407,12 +413,12 @@ func getSignatureAlgorithmFromAI(ai pkix.AlgorithmIdentifier) SignatureAlgorithm
 	// in the Parameters.
 
 	var params pssParameters
-	if _, err := asn1.Unmarshal(ai.Parameters.FullBytes, &params); err != nil {
+	if _, err := asn1andr.Unmarshal(ai.Parameters.FullBytes, &params); err != nil {
 		return UnknownSignatureAlgorithm
 	}
 
 	var mgf1HashFunc pkix.AlgorithmIdentifier
-	if _, err := asn1.Unmarshal(params.MGF.Parameters.FullBytes, &mgf1HashFunc); err != nil {
+	if _, err := asn1andr.Unmarshal(params.MGF.Parameters.FullBytes, &mgf1HashFunc); err != nil {
 		return UnknownSignatureAlgorithm
 	}
 
@@ -867,7 +873,7 @@ func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey
 		}
 	case *dsa.PublicKey:
 		dsaSig := new(dsaSignature)
-		if rest, err := asn1.Unmarshal(signature, dsaSig); err != nil {
+		if rest, err := asn1andr.Unmarshal(signature, dsaSig); err != nil {
 			return err
 		} else if len(rest) != 0 {
 			return errors.New("x509: trailing data after DSA signature")
@@ -881,7 +887,7 @@ func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey
 		return
 	case *ecdsa.PublicKey:
 		ecdsaSig := new(ecdsaSignature)
-		if rest, err := asn1.Unmarshal(signature, ecdsaSig); err != nil {
+		if rest, err := asn1andr.Unmarshal(signature, ecdsaSig); err != nil {
 			return err
 		} else if len(rest) != 0 {
 			return errors.New("x509: trailing data after ECDSA signature")
@@ -962,7 +968,7 @@ func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{
 		//}
 
 		p := new(pkcs1PublicKey)
-		rest, err := asn1.Unmarshal(asn1Data, p)
+		rest, err := asn1andr.Unmarshal(asn1Data, p)
 		if err != nil {
 			return nil, err
 		}
@@ -984,7 +990,7 @@ func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{
 		return pub, nil
 	case DSA:
 		var p *big.Int
-		rest, err := asn1.Unmarshal(asn1Data, &p)
+		rest, err := asn1andr.Unmarshal(asn1Data, &p)
 		if err != nil {
 			return nil, err
 		}
@@ -993,7 +999,7 @@ func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{
 		}
 		paramsData := keyData.Algorithm.Parameters.FullBytes
 		params := new(dsaAlgorithmParameters)
-		rest, err = asn1.Unmarshal(paramsData, params)
+		rest, err = asn1andr.Unmarshal(paramsData, params)
 		if err != nil {
 			return nil, err
 		}
@@ -1015,7 +1021,7 @@ func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{
 	case ECDSA:
 		paramsData := keyData.Algorithm.Parameters.FullBytes
 		namedCurveOID := new(asn1.ObjectIdentifier)
-		rest, err := asn1.Unmarshal(paramsData, namedCurveOID)
+		rest, err := asn1andr.Unmarshal(paramsData, namedCurveOID)
 		if err != nil {
 			return nil, err
 		}
@@ -1060,7 +1066,7 @@ func parseSANExtension(value []byte) (dnsNames, emailAddresses []string, ipAddre
 	//      registeredID                    [8]     OBJECT IDENTIFIER }
 	var seq asn1.RawValue
 	var rest []byte
-	if rest, err = asn1.Unmarshal(value, &seq); err != nil {
+	if rest, err = asn1andr.Unmarshal(value, &seq); err != nil {
 		return
 	} else if len(rest) != 0 {
 		err = errors.New("x509: trailing data after X.509 extension")
@@ -1074,7 +1080,7 @@ func parseSANExtension(value []byte) (dnsNames, emailAddresses []string, ipAddre
 	rest = seq.Bytes
 	for len(rest) > 0 {
 		var v asn1.RawValue
-		rest, err = asn1.Unmarshal(rest, &v)
+		rest, err = asn1andr.Unmarshal(rest, &v)
 		if err != nil {
 			return
 		}
@@ -1121,12 +1127,12 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 	out.SerialNumber = in.TBSCertificate.SerialNumber
 
 	var issuer, subject pkix.RDNSequence
-	if rest, err := asn1.Unmarshal(in.TBSCertificate.Subject.FullBytes, &subject); err != nil {
+	if rest, err := asn1andr.Unmarshal(in.TBSCertificate.Subject.FullBytes, &subject); err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
 		return nil, errors.New("x509: trailing data after X.509 subject")
 	}
-	if rest, err := asn1.Unmarshal(in.TBSCertificate.Issuer.FullBytes, &issuer); err != nil {
+	if rest, err := asn1andr.Unmarshal(in.TBSCertificate.Issuer.FullBytes, &issuer); err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
 		return nil, errors.New("x509: trailing data after X.509 subject")
@@ -1147,7 +1153,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 			case 15:
 				// RFC 5280, 4.2.1.3
 				var usageBits asn1.BitString
-				if rest, err := asn1.Unmarshal(e.Value, &usageBits); err != nil {
+				if rest, err := asn1andr.Unmarshal(e.Value, &usageBits); err != nil {
 					return nil, err
 				} else if len(rest) != 0 {
 					return nil, errors.New("x509: trailing data after X.509 KeyUsage")
@@ -1164,7 +1170,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 			case 19:
 				// RFC 5280, 4.2.1.9
 				var constraints basicConstraints
-				if rest, err := asn1.Unmarshal(e.Value, &constraints); err != nil {
+				if rest, err := asn1andr.Unmarshal(e.Value, &constraints); err != nil {
 					return nil, err
 				} else if len(rest) != 0 {
 					return nil, errors.New("x509: trailing data after X.509 BasicConstraints")
@@ -1203,7 +1209,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 				// BaseDistance ::= INTEGER (0..MAX)
 
 				var constraints nameConstraints
-				if rest, err := asn1.Unmarshal(e.Value, &constraints); err != nil {
+				if rest, err := asn1andr.Unmarshal(e.Value, &constraints); err != nil {
 					return nil, err
 				} else if len(rest) != 0 {
 					return nil, errors.New("x509: trailing data after X.509 NameConstraints")
@@ -1246,7 +1252,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 				//     nameRelativeToCRLIssuer [1]     RelativeDistinguishedName }
 
 				var cdp []distributionPoint
-				if rest, err := asn1.Unmarshal(e.Value, &cdp); err != nil {
+				if rest, err := asn1andr.Unmarshal(e.Value, &cdp); err != nil {
 					return nil, err
 				} else if len(rest) != 0 {
 					return nil, errors.New("x509: trailing data after X.509 CRL distribution point")
@@ -1259,7 +1265,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 					}
 
 					var n asn1.RawValue
-					if _, err := asn1.Unmarshal(dp.DistributionPoint.FullName.Bytes, &n); err != nil {
+					if _, err := asn1andr.Unmarshal(dp.DistributionPoint.FullName.Bytes, &n); err != nil {
 						return nil, err
 					}
 					// Trailing data after the fullName is
@@ -1274,7 +1280,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 			case 35:
 				// RFC 5280, 4.2.1.1
 				var a authKeyId
-				if rest, err := asn1.Unmarshal(e.Value, &a); err != nil {
+				if rest, err := asn1andr.Unmarshal(e.Value, &a); err != nil {
 					return nil, err
 				} else if len(rest) != 0 {
 					return nil, errors.New("x509: trailing data after X.509 authority key-id")
@@ -1291,7 +1297,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 				// KeyPurposeId ::= OBJECT IDENTIFIER
 
 				var keyUsage []asn1.ObjectIdentifier
-				if rest, err := asn1.Unmarshal(e.Value, &keyUsage); err != nil {
+				if rest, err := asn1andr.Unmarshal(e.Value, &keyUsage); err != nil {
 					return nil, err
 				} else if len(rest) != 0 {
 					return nil, errors.New("x509: trailing data after X.509 ExtendedKeyUsage")
@@ -1308,7 +1314,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 			case 14:
 				// RFC 5280, 4.2.1.2
 				var keyid []byte
-				if rest, err := asn1.Unmarshal(e.Value, &keyid); err != nil {
+				if rest, err := asn1andr.Unmarshal(e.Value, &keyid); err != nil {
 					return nil, err
 				} else if len(rest) != 0 {
 					return nil, errors.New("x509: trailing data after X.509 key-id")
@@ -1318,7 +1324,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 			case 32:
 				// RFC 5280 4.2.1.4: Certificate Policies
 				var policies []policyInformation
-				if rest, err := asn1.Unmarshal(e.Value, &policies); err != nil {
+				if rest, err := asn1andr.Unmarshal(e.Value, &policies); err != nil {
 					return nil, err
 				} else if len(rest) != 0 {
 					return nil, errors.New("x509: trailing data after X.509 certificate policies")
@@ -1335,7 +1341,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 		} else if e.Id.Equal(oidExtensionAuthorityInfoAccess) {
 			// RFC 5280 4.2.2.1: Authority Information Access
 			var aia []authorityInfoAccess
-			if rest, err := asn1.Unmarshal(e.Value, &aia); err != nil {
+			if rest, err := asn1andr.Unmarshal(e.Value, &aia); err != nil {
 				return nil, err
 			} else if len(rest) != 0 {
 				return nil, errors.New("x509: trailing data after X.509 authority information")
@@ -1368,7 +1374,7 @@ func parseCertificate(in *certificate) (*Certificate, error) {
 // ParseCertificate parses a single certificate from the given ASN.1 DER data.
 func ParseCertificate(asn1Data []byte) (*Certificate, error) {
 	var cert certificate
-	rest, err := asn1.Unmarshal(asn1Data, &cert)
+	rest, err := asn1andr.Unmarshal(asn1Data, &cert)
 	if err != nil {
 		return nil, err
 	}
@@ -1379,6 +1385,56 @@ func ParseCertificate(asn1Data []byte) (*Certificate, error) {
 	return parseCertificate(&cert)
 }
 
+var andrCertPanicReported uint32
+
+func andrCertConvertVal(out, in reflect.Value) {
+	defer func() {
+		if p := recover(); p != nil {
+			if atomic.CompareAndSwapUint32(&andrCertPanicReported, 0, 1) {
+				fmt.Fprintf(os.Stderr, "Conversion in pkcs7 andrCertToGoCert failed: %s\n", p)
+			}
+		}
+	}()
+
+	out.Set(in.Convert(out.Type()))
+}
+
+func andrCertToGoCert(certificate *Certificate) *x509.Certificate {
+	var cert x509.Certificate
+	goval := reflect.ValueOf(&cert).Elem()
+	ourval := reflect.ValueOf(certificate).Elem()
+	for i := 0; i < ourval.NumField(); i++ {
+		n := ourval.Type().Field(i).Name
+		out := goval.FieldByName(n)
+		if out.IsValid() {
+			andrCertConvertVal(out, ourval.Field(i))
+		}
+	}
+	return &cert
+}
+
+func ParseCertificateForGo(asn1Data []byte) (*x509.Certificate, error) {
+	cert, err := ParseCertificate(asn1Data)
+	var res *x509.Certificate
+	if cert != nil {
+		res = andrCertToGoCert(cert)
+	}
+	return res, err
+}
+
+func ParseCertificatesForGo(asn1Data []byte) ([]*x509.Certificate, error) {
+	certs, err := ParseCertificates(asn1Data)
+
+	var res []*x509.Certificate
+	if certs != nil {
+		res = make([]*x509.Certificate, len(certs))
+		for i := range certs {
+			res[i] = andrCertToGoCert(certs[i])
+		}
+	}
+	return res, err
+}
+
 // ParseCertificates parses one or more certificates from the given ASN.1 DER
 // data. The certificates must be concatenated with no intermediate padding.
 func ParseCertificates(asn1Data []byte) ([]*Certificate, error) {
@@ -1387,7 +1443,7 @@ func ParseCertificates(asn1Data []byte) ([]*Certificate, error) {
 	for len(asn1Data) > 0 {
 		cert := new(certificate)
 		var err error
-		asn1Data, err = asn1.Unmarshal(asn1Data, cert)
+		asn1Data, err = asn1andr.Unmarshal(asn1Data, cert)
 		if err != nil {
 			return nil, err
 		}
@@ -1871,7 +1927,7 @@ func ParseCRL(crlBytes []byte) (*pkix.CertificateList, error) {
 // ParseDERCRL parses a DER encoded CRL from the given bytes.
 func ParseDERCRL(derBytes []byte) (*pkix.CertificateList, error) {
 	certList := new(pkix.CertificateList)
-	if rest, err := asn1.Unmarshal(derBytes, certList); err != nil {
+	if rest, err := asn1andr.Unmarshal(derBytes, certList); err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
 		return nil, errors.New("x509: trailing data after CRL")
@@ -2010,7 +2066,7 @@ func newRawAttributes(attributes []pkix.AttributeTypeAndValueSET) ([]asn1.RawVal
 	if err != nil {
 		return nil, err
 	}
-	rest, err := asn1.Unmarshal(b, &rawAttributes)
+	rest, err := asn1andr.Unmarshal(b, &rawAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -2025,7 +2081,7 @@ func parseRawAttributes(rawAttributes []asn1.RawValue) []pkix.AttributeTypeAndVa
 	var attributes []pkix.AttributeTypeAndValueSET
 	for _, rawAttr := range rawAttributes {
 		var attr pkix.AttributeTypeAndValueSET
-		rest, err := asn1.Unmarshal(rawAttr.FullBytes, &attr)
+		rest, err := asn1andr.Unmarshal(rawAttr.FullBytes, &attr)
 		// Ignore attributes that don't parse into pkix.AttributeTypeAndValueSET
 		// (i.e.: challengePassword or unstructuredName).
 		if err == nil && len(rest) == 0 {
@@ -2048,7 +2104,7 @@ func parseCSRExtensions(rawAttributes []asn1.RawValue) ([]pkix.Extension, error)
 	var ret []pkix.Extension
 	for _, rawAttr := range rawAttributes {
 		var attr pkcs10Attribute
-		if rest, err := asn1.Unmarshal(rawAttr.FullBytes, &attr); err != nil || len(rest) != 0 || len(attr.Values) == 0 {
+		if rest, err := asn1andr.Unmarshal(rawAttr.FullBytes, &attr); err != nil || len(rest) != 0 || len(attr.Values) == 0 {
 			// Ignore attributes that don't parse.
 			continue
 		}
@@ -2058,7 +2114,7 @@ func parseCSRExtensions(rawAttributes []asn1.RawValue) ([]pkix.Extension, error)
 		}
 
 		var extensions []pkix.Extension
-		if _, err := asn1.Unmarshal(attr.Values[0].FullBytes, &extensions); err != nil {
+		if _, err := asn1andr.Unmarshal(attr.Values[0].FullBytes, &extensions); err != nil {
 			return nil, err
 		}
 		ret = append(ret, extensions...)
@@ -2228,7 +2284,7 @@ func CreateCertificateRequest(rand io.Reader, template *CertificateRequest, priv
 func ParseCertificateRequest(asn1Data []byte) (*CertificateRequest, error) {
 	var csr certificateRequest
 
-	rest, err := asn1.Unmarshal(asn1Data, &csr)
+	rest, err := asn1andr.Unmarshal(asn1Data, &csr)
 	if err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
@@ -2240,7 +2296,7 @@ func ParseCertificateRequest(asn1Data []byte) (*CertificateRequest, error) {
 
 func parseCertificateRequest(in *certificateRequest) (*CertificateRequest, error) {
 	out := &CertificateRequest{
-		Raw: in.Raw,
+		Raw:                      in.Raw,
 		RawTBSCertificateRequest: in.TBSCSR.Raw,
 		RawSubjectPublicKeyInfo:  in.TBSCSR.PublicKey.Raw,
 		RawSubject:               in.TBSCSR.Subject.FullBytes,
@@ -2261,7 +2317,7 @@ func parseCertificateRequest(in *certificateRequest) (*CertificateRequest, error
 	}
 
 	var subject pkix.RDNSequence
-	if rest, err := asn1.Unmarshal(in.TBSCSR.Subject.FullBytes, &subject); err != nil {
+	if rest, err := asn1andr.Unmarshal(in.TBSCSR.Subject.FullBytes, &subject); err != nil {
 		return nil, err
 	} else if len(rest) != 0 {
 		return nil, errors.New("x509: trailing data after X.509 Subject")

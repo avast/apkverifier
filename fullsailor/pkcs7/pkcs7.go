@@ -2,7 +2,6 @@
 package pkcs7
 
 import (
-	x509 "github.com/avast/apkverifier/internal/x509andr"
 	"bytes"
 	"crypto"
 	"crypto/aes"
@@ -11,7 +10,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
-	go_x509 "crypto/x509"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
@@ -19,9 +18,10 @@ import (
 	"math/big"
 	"sort"
 	"time"
-	"reflect"
-	"sync/atomic"
-	"os"
+
+	"github.com/avast/apkverifier/internal/asn1andr"
+
+	"github.com/avast/apkverifier/internal/x509andr"
 
 	_ "crypto/sha1" // for crypto.SHA1
 )
@@ -29,7 +29,7 @@ import (
 // PKCS7 Represents a PKCS7 structure
 type PKCS7 struct {
 	Content      []byte
-	Certificates []*go_x509.Certificate
+	Certificates []*x509.Certificate
 	CRLs         []pkix.CertificateList
 	Signers      []signerInfo
 	ContentType  asn1.ObjectIdentifier
@@ -89,7 +89,7 @@ type recipientInfo struct {
 type encryptedContentInfo struct {
 	ContentType                asn1.ObjectIdentifier
 	ContentEncryptionAlgorithm pkix.AlgorithmIdentifier
-	EncryptedContent           asn1.RawValue `asn1:"tag:0,optional,explicit"`
+	EncryptedContent           asn1.RawValue `asn1:"tag:0,optional"`
 }
 
 type attribute struct {
@@ -153,7 +153,7 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 	if err != nil {
 		return nil, err
 	}
-	rest, err := asn1.Unmarshal(der, &info)
+	rest, err := asn1andr.Unmarshal(der, &info)
 	if len(rest) > 0 {
 		err = asn1.SyntaxError{Msg: "trailing data"}
 		return
@@ -169,40 +169,12 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 	case info.ContentType.Equal(oidEnvelopedData):
 		return parseEnvelopedData(info.Content.Bytes)
 	}
-
 	return nil, ErrUnsupportedContentType
-}
-
-var andrCertPanicReported uint32
-func andrCertConvertVal(out, in reflect.Value) {
-	defer func() {
-		if p := recover(); p != nil {
-			if atomic.CompareAndSwapUint32(&andrCertPanicReported, 0, 1) {
-				fmt.Fprintf(os.Stderr, "Conversion in pkcs7 andrCertToGoCert failed: %s\n", p)
-			}
-		}
-	}()
-
-	out.Set(in.Convert(out.Type()))
-}
-
-func andrCertToGoCert(certificate *x509.Certificate) *go_x509.Certificate {
-	var cert go_x509.Certificate
-	goval := reflect.ValueOf(&cert).Elem()
-	ourval := reflect.ValueOf(certificate).Elem()
-	for i := 0; i < ourval.NumField(); i++ {
-		n := ourval.Type().Field(i).Name
-		out := goval.FieldByName(n)
-		if out.IsValid() {
-			andrCertConvertVal(out, ourval.Field(i))
-		}
-	}
-	return &cert
 }
 
 func parseSignedData(data []byte) (*PKCS7, error) {
 	var sd signedData
-	asn1.Unmarshal(data, &sd)
+	asn1andr.Unmarshal(data, &sd)
 	certs, err := sd.Certificates.Parse()
 	if err != nil {
 		return nil, err
@@ -214,28 +186,22 @@ func parseSignedData(data []byte) (*PKCS7, error) {
 
 	// The Content.Bytes maybe empty on PKI responses.
 	if len(sd.ContentInfo.Content.Bytes) > 0 {
-		if _, err := asn1.Unmarshal(sd.ContentInfo.Content.Bytes, &compound); err != nil {
+		if _, err := asn1andr.Unmarshal(sd.ContentInfo.Content.Bytes, &compound); err != nil {
 			return nil, err
 		}
 	}
 	// Compound octet string
 	if compound.IsCompound {
-		if _, err = asn1.Unmarshal(compound.Bytes, &content); err != nil {
+		if _, err = asn1andr.Unmarshal(compound.Bytes, &content); err != nil {
 			return nil, err
 		}
 	} else {
 		// assuming this is tag 04
 		content = compound.Bytes
 	}
-
-	goCerts := make([]*go_x509.Certificate, len(certs))
-	for i := range certs {
-		goCerts[i] = andrCertToGoCert(certs[i])
-	}
-
 	return &PKCS7{
 		Content:      content,
-		Certificates: goCerts,
+		Certificates: certs,
 		CRLs:         sd.CRLs,
 		Signers:      sd.SignerInfos,
 		ContentType:  sd.ContentInfo.ContentType,
@@ -248,16 +214,16 @@ func (raw rawCertificates) Parse() ([]*x509.Certificate, error) {
 	}
 
 	var val asn1.RawValue
-	if _, err := asn1.Unmarshal(raw.Raw, &val); err != nil {
+	if _, err := asn1andr.Unmarshal(raw.Raw, &val); err != nil {
 		return nil, err
 	}
 
-	return x509.ParseCertificates(val.Bytes)
+	return x509andr.ParseCertificatesForGo(val.Bytes)
 }
 
 func parseEnvelopedData(data []byte) (*PKCS7, error) {
 	var ed envelopedData
-	if _, err := asn1.Unmarshal(data, &ed); err != nil {
+	if _, err := asn1andr.Unmarshal(data, &ed); err != nil {
 		return nil, err
 	}
 	return &PKCS7{
@@ -282,14 +248,14 @@ func (p7 *PKCS7) Verify() (err error) {
 
 func verifySignature(p7 *PKCS7, signer signerInfo) error {
 	signedData := p7.Content
+	hash, err := getHashForOID(signer.DigestAlgorithm.Algorithm)
+	if err != nil {
+		return err
+	}
 	if len(signer.AuthenticatedAttributes) > 0 {
 		// TODO(fullsailor): First check the content type match
 		var digest []byte
 		err := unmarshalAttribute(signer.AuthenticatedAttributes, oidAttributeMessageDigest, &digest)
-		if err != nil {
-			return err
-		}
-		hash, err := getHashForOID(signer.DigestAlgorithm.Algorithm)
 		if err != nil {
 			return err
 		}
@@ -314,7 +280,18 @@ func verifySignature(p7 *PKCS7, signer signerInfo) error {
 		return errors.New("pkcs7: No certificate for signer")
 	}
 
-	algo := go_x509.SHA1WithRSA
+	algo := getSignatureAlgorithmFromAI(signer.DigestEncryptionAlgorithm)
+	if algo == x509.UnknownSignatureAlgorithm {
+		// I'm not sure what the spec here is, and the openssl sources were not
+		// helpful. But, this is what App Store receipts appear to do.
+		// The DigestEncryptionAlgorithm is just "rsaEncryption (PKCS #1)"
+		// But we're expecting a digest + encryption algorithm. So... we're going
+		// to determine an algorithm based on the DigestAlgorithm and this
+		// encryption algorithm.
+		if signer.DigestEncryptionAlgorithm.Algorithm.Equal(oidEncryptionAlgorithmRSA) {
+			algo = getRSASignatureAlgorithmForDigestAlgorithm(hash)
+		}
+	}
 	return cert.CheckSignature(algo, signedData, signer.EncryptedDigest)
 }
 
@@ -328,7 +305,7 @@ func marshalAttributes(attrs []attribute) ([]byte, error) {
 
 	// Remove the leading sequence octets
 	var raw asn1.RawValue
-	asn1.Unmarshal(encodedAttributes, &raw)
+	asn1andr.Unmarshal(encodedAttributes, &raw)
 	return raw.Bytes, nil
 }
 
@@ -337,7 +314,7 @@ var (
 	oidEncryptionAlgorithmRSA = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
 )
 
-func getCertFromCertsByIssuerAndSerial(certs []*go_x509.Certificate, ias issuerAndSerial) *go_x509.Certificate {
+func getCertFromCertsByIssuerAndSerial(certs []*x509.Certificate, ias issuerAndSerial) *x509.Certificate {
 	for _, cert := range certs {
 		if isCertMatchForIssuerAndSerial(cert, ias) {
 			return cert
@@ -350,13 +327,24 @@ func getHashForOID(oid asn1.ObjectIdentifier) (crypto.Hash, error) {
 	switch {
 	case oid.Equal(oidDigestAlgorithmSHA1):
 		return crypto.SHA1, nil
+	case oid.Equal(oidSHA256):
+		return crypto.SHA256, nil
 	}
 	return crypto.Hash(0), ErrUnsupportedAlgorithm
 }
 
+func getRSASignatureAlgorithmForDigestAlgorithm(hash crypto.Hash) x509.SignatureAlgorithm {
+	for _, details := range signatureAlgorithmDetails {
+		if details.pubKeyAlgo == x509.RSA && details.hash == hash {
+			return details.algo
+		}
+	}
+	return x509.UnknownSignatureAlgorithm
+}
+
 // GetOnlySigner returns an x509.Certificate for the first signer of the signed
 // data payload. If there are more or less than one signer, nil is returned
-func (p7 *PKCS7) GetOnlySigner() *go_x509.Certificate {
+func (p7 *PKCS7) GetOnlySigner() *x509.Certificate {
 	if len(p7.Signers) != 1 {
 		return nil
 	}
@@ -371,7 +359,7 @@ var ErrUnsupportedAlgorithm = errors.New("pkcs7: cannot decrypt data: only RSA, 
 var ErrNotEncryptedContent = errors.New("pkcs7: content data is a decryptable data type")
 
 // Decrypt decrypts encrypted content info for recipient cert and private key
-func (p7 *PKCS7) Decrypt(cert *go_x509.Certificate, pk crypto.PrivateKey) ([]byte, error) {
+func (p7 *PKCS7) Decrypt(cert *x509.Certificate, pk crypto.PrivateKey) ([]byte, error) {
 	data, ok := p7.raw.(envelopedData)
 	if !ok {
 		return nil, ErrNotEncryptedContent
@@ -418,7 +406,7 @@ func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
 		cypherbytes := eci.EncryptedContent.Bytes
 		for {
 			var part []byte
-			cypherbytes, _ = asn1.Unmarshal(cypherbytes, &part)
+			cypherbytes, _ = asn1andr.Unmarshal(cypherbytes, &part)
 			buf.Write(part)
 			if cypherbytes == nil {
 				break
@@ -452,7 +440,7 @@ func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
 		params := aesGCMParameters{}
 		paramBytes := eci.ContentEncryptionAlgorithm.Parameters.Bytes
 
-		_, err := asn1.Unmarshal(paramBytes, &params)
+		_, err := asn1andr.Unmarshal(paramBytes, &params)
 		if err != nil {
 			return nil, err
 		}
@@ -490,7 +478,7 @@ func (eci encryptedContentInfo) decrypt(key []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-func selectRecipientForCertificate(recipients []recipientInfo, cert *go_x509.Certificate) recipientInfo {
+func selectRecipientForCertificate(recipients []recipientInfo, cert *x509.Certificate) recipientInfo {
 	for _, recp := range recipients {
 		if isCertMatchForIssuerAndSerial(cert, recp.IssuerAndSerialNumber) {
 			return recp
@@ -499,7 +487,7 @@ func selectRecipientForCertificate(recipients []recipientInfo, cert *go_x509.Cer
 	return recipientInfo{}
 }
 
-func isCertMatchForIssuerAndSerial(cert *go_x509.Certificate, ias issuerAndSerial) bool {
+func isCertMatchForIssuerAndSerial(cert *x509.Certificate, ias issuerAndSerial) bool {
 	return cert.SerialNumber.Cmp(ias.SerialNumber) == 0 && bytes.Compare(cert.RawIssuer, ias.IssuerName.FullBytes) == 0
 }
 
@@ -540,7 +528,7 @@ func unpad(data []byte, blocklen int) ([]byte, error) {
 func unmarshalAttribute(attrs []attribute, attributeType asn1.ObjectIdentifier, out interface{}) error {
 	for _, attr := range attrs {
 		if attr.Type.Equal(attributeType) {
-			_, err := asn1.Unmarshal(attr.Value.Bytes, out)
+			_, err := asn1andr.Unmarshal(attr.Value.Bytes, out)
 			return err
 		}
 	}
@@ -693,7 +681,7 @@ func (sd *SignedData) AddSigner(cert *x509.Certificate, pkey crypto.PrivateKey, 
 	signer := signerInfo{
 		AuthenticatedAttributes:   finalAttrs,
 		DigestAlgorithm:           pkix.AlgorithmIdentifier{Algorithm: oidDigestAlgorithmSHA1},
-		DigestEncryptionAlgorithm: pkix.AlgorithmIdentifier{Algorithm: oidEncryptionAlgorithmRSA},
+		DigestEncryptionAlgorithm: pkix.AlgorithmIdentifier{Algorithm: oidSignatureSHA1WithRSA},
 		IssuerAndSerialNumber:     ias,
 		EncryptedDigest:           signature,
 		Version:                   1,
@@ -712,7 +700,7 @@ func (sd *SignedData) AddCertificate(cert *x509.Certificate) {
 // Detach removes content from the signed data struct to make it a detached signature.
 // This must be called right before Finish()
 func (sd *SignedData) Detach() {
-	sd.sd.ContentInfo = contentInfo{ContentType: oidSignedData}
+	sd.sd.ContentInfo = contentInfo{ContentType: oidData}
 }
 
 // Finish marshals the content and its signers
@@ -1036,7 +1024,7 @@ func (si *SignerInfo) UnmarshalSignedAttribute(attributeType asn1.ObjectIdentifi
 			}
 
 			found = true
-			if _, err := asn1.Unmarshal(attr.Value.Bytes, out); err != nil {
+			if _, err := asn1andr.Unmarshal(attr.Value.Bytes, out); err != nil {
 				return err
 			}
 		}
@@ -1058,6 +1046,6 @@ func (si *SignerInfo) MarshalAuthenticatedAttributes() ([]byte, error) {
 
 	// Remove the leading sequence octets
 	var raw asn1.RawValue
-	asn1.Unmarshal(encodedAttributes, &raw)
+	asn1andr.Unmarshal(encodedAttributes, &raw)
 	return raw.Bytes, nil
 }

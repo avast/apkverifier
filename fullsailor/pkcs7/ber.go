@@ -5,8 +5,10 @@ import (
 	"errors"
 )
 
+// var encodeIndent = 0
+
 type asn1Object interface {
-	EncodeTo(writer *bytes.Buffer, indent int) error
+	EncodeTo(writer *bytes.Buffer) error
 }
 
 type asn1Structured struct {
@@ -14,15 +16,17 @@ type asn1Structured struct {
 	content  []asn1Object
 }
 
-func (s asn1Structured) EncodeTo(out *bytes.Buffer, indent int) error {
-	//fmt.Printf("%s--> tag: % X\n", strings.Repeat("| ", indent), s.tagBytes)
+func (s asn1Structured) EncodeTo(out *bytes.Buffer) error {
+	//fmt.Printf("%s--> tag: % X\n", strings.Repeat("| ", encodeIndent), s.tagBytes)
+	//encodeIndent++
 	inner := new(bytes.Buffer)
 	for _, obj := range s.content {
-		err := obj.EncodeTo(inner, indent+1)
+		err := obj.EncodeTo(inner)
 		if err != nil {
 			return err
 		}
 	}
+	//encodeIndent--
 	out.Write(s.tagBytes)
 	encodeLength(out, inner.Len())
 	out.Write(inner.Bytes())
@@ -35,7 +39,7 @@ type asn1Primitive struct {
 	content  []byte
 }
 
-func (p asn1Primitive) EncodeTo(out *bytes.Buffer, indent int) error {
+func (p asn1Primitive) EncodeTo(out *bytes.Buffer) error {
 	_, err := out.Write(p.tagBytes)
 	if err != nil {
 		return err
@@ -43,8 +47,8 @@ func (p asn1Primitive) EncodeTo(out *bytes.Buffer, indent int) error {
 	if err = encodeLength(out, p.length); err != nil {
 		return err
 	}
-	//fmt.Printf("%s--> tag: % X length: %d\n", strings.Repeat("| ", indent), p.tagBytes, p.length)
-	//fmt.Printf("%s--> content length: %d\n", strings.Repeat("| ", indent), len(p.content))
+	//fmt.Printf("%s--> tag: % X length: %d\n", strings.Repeat("| ", encodeIndent), p.tagBytes, p.length)
+	//fmt.Printf("%s--> content length: %d\n", strings.Repeat("| ", encodeIndent), len(p.content))
 	out.Write(p.content)
 
 	return nil
@@ -61,7 +65,7 @@ func ber2der(ber []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	obj.EncodeTo(out, 0)
+	obj.EncodeTo(out)
 
 	// if offset < len(ber) {
 	//	return nil, fmt.Errorf("ber2der: Content longer than expected. Got %d, expected %d", offset, len(ber))
@@ -169,7 +173,7 @@ func readObject(ber []byte, offset int) (asn1Object, int, error) {
 		if 0x0 == (int)(ber[offset]) {
 			offset++
 			numberOfBytes--
-			//return nil, 0, errors.New(fmt.Sprintf("ber2der: BER tag length has leading zero %d", offset))
+			//return nil, 0, errors.New("ber2der: BER tag length has leading zero")
 		}
 		//fmt.Printf("--> (compute length) indicator byte: %x\n", l)
 		//fmt.Printf("--> (compute length) length bytes: % X\n", ber[offset:offset+numberOfBytes])

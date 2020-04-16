@@ -5,12 +5,11 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	go_x509 "crypto/x509"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
-	x509 "github.com/avast/apkverifier/internal/x509andr"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -38,14 +37,12 @@ func TestVerify(t *testing.T) {
 }
 
 func TestVerifyEC2(t *testing.T) {
-	t.Skip("FIXME: why is this failing?")
-
 	fixture := UnmarshalTestFixture(EC2IdentityDocumentFixture)
 	p7, err := Parse(fixture.Input)
 	if err != nil {
 		t.Errorf("Parse encountered unexpected error: %v", err)
 	}
-	p7.Certificates = []*go_x509.Certificate{andrCertToGoCert(fixture.Certificate)}
+	p7.Certificates = []*x509.Certificate{fixture.Certificate}
 	if err := p7.Verify(); err != nil {
 		t.Errorf("Verify failed with error: %v", err)
 	}
@@ -68,7 +65,7 @@ func TestDecrypt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := p7.Decrypt(andrCertToGoCert(fixture.Certificate), fixture.PrivateKey)
+	content, err := p7.Decrypt(fixture.Certificate, fixture.PrivateKey)
 	if err != nil {
 		t.Errorf("Cannot Decrypt with error: %v", err)
 	}
@@ -272,7 +269,7 @@ func TestEncrypt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cannot Parse encrypted result: %s", err)
 		}
-		result, err := p7.Decrypt(andrCertToGoCert(cert.Certificate), cert.PrivateKey)
+		result, err := p7.Decrypt(cert.Certificate, cert.PrivateKey)
 		if err != nil {
 			t.Fatalf("cannot Decrypt encrypted result: %s", err)
 		}
@@ -493,15 +490,16 @@ JBOFyaCnMotGNioSHY5hAkEAxyXcNixQ2RpLXJTQZtwnbk0XDcbgB+fBgXnv/4f3
 BCvcu85DqJeJyQv44Oe1qsXEX9BfcQIOVaoep35RPlKi9g==
 -----END PRIVATE KEY-----`
 
-// Content is "This is a test"
+// echo -n "This is a test" > test.txt
+// openssl cms -encrypt -in test.txt cert.pem
 var EncryptedTestFixture = `
 -----BEGIN PKCS7-----
-MIIBFwYJKoZIhvcNAQcDoIIBCDCCAQQCAQAxgcowgccCAQAwMjApMRAwDgYDVQQK
-EwdBY21lIENvMRUwEwYDVQQDEwxFZGRhcmQgU3RhcmsCBQDL+CvWMAsGCSqGSIb3
-DQEBAQSBgKyP/5WlRTZD3dWMrLOX6QRNDrXEkQjhmToRwFZdY3LgUh25ZU0S/q4G
-dHPV21Fv9lQD+q7l3vfeHw8M6Z1PKi9sHMVfxAkQpvaI96DTIT3YHtuLC1w3geCO
-8eFWTq2qS4WChSuS/yhYosjA1kTkE0eLnVZcGw0z/WVuEZznkdyIMDIGCSqGSIb3
-DQEHATARBgUrDgMCBwQImpKsUyMPpQigEgQQRcWWrCRXqpD5Njs0GkJl+g==
+MIIBGgYJKoZIhvcNAQcDoIIBCzCCAQcCAQAxgcwwgckCAQAwMjApMRAwDgYDVQQK
+EwdBY21lIENvMRUwEwYDVQQDEwxFZGRhcmQgU3RhcmsCBQDL+CvWMA0GCSqGSIb3
+DQEBAQUABIGAyFz7bfI2noUs4FpmYfztm1pVjGyB00p9x0H3gGHEYNXdqlq8VG8d
+iq36poWtEkatnwsOlURWZYECSi0g5IAL0U9sj82EN0xssZNaK0S5FTGnB3DPvYgt
+HJvcKq7YvNLKMh4oqd17C6GB4oXyEBDj0vZnL7SUoCAOAWELPeC8CTUwMwYJKoZI
+hvcNAQcBMBQGCCqGSIb3DQMHBAhEowTkot3a7oAQFD//J/IhFnk+JbkH7HZQFA==
 -----END PKCS7-----
 -----BEGIN CERTIFICATE-----
 MIIB1jCCAUGgAwIBAgIFAMv4K9YwCwYJKoZIhvcNAQELMCkxEDAOBgNVBAoTB0Fj

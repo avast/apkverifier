@@ -3,11 +3,15 @@ package signingblock
 import (
 	"bytes"
 	"crypto"
-	"crypto/x509"
 	"encoding/binary"
 	"fmt"
-	"github.com/avast/apkverifier/apilevel"
 	"math"
+
+	"github.com/avast/apkverifier/internal/x509andr"
+
+	"github.com/avast/apkverifier/apilevel"
+
+	"crypto/x509"
 )
 
 type SignatureAlgorithm int32
@@ -158,7 +162,7 @@ func (s *signerContext) parseSignatures(signaturesSlice *bytes.Buffer) (success 
 func (s *signerContext) parsePublicKey(publicKeySlice *bytes.Buffer, signedDataBytes []byte) (success bool) {
 	s.publicKeyBytes = publicKeySlice.Bytes()
 
-	publicKey, err := x509.ParsePKIXPublicKey(s.publicKeyBytes)
+	publicKey, err := x509andr.ParsePKIXPublicKey(s.publicKeyBytes)
 	if err != nil {
 		s.result.addError("failed to parse public key: %s", err.Error())
 		return
@@ -184,7 +188,7 @@ func (s *signerContext) parseCertificates(certificatesSlice *bytes.Buffer) (main
 			return
 		}
 
-		cert, err := x509.ParseCertificate(encodedCert.Bytes())
+		cert, err := x509andr.ParseCertificateForGo(encodedCert.Bytes())
 		if err != nil {
 			s.result.addError("Failed to parse certificate #%d: %s", certificateCount, err.Error())
 			return
