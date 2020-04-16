@@ -1019,27 +1019,27 @@ func TestUnexportedStructField(t *testing.T) {
 }
 
 func TestNull(t *testing.T) {
-	marshaled, err := asn1.Marshal(asn1.NullRawValue)
+	marshaled, err := asn1.Marshal(NullRawValue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(asn1.NullBytes, marshaled) {
-		t.Errorf("Expected Marshal of NullRawValue to yield %x, got %x", asn1.NullBytes, marshaled)
+	if !bytes.Equal(NullBytes, marshaled) {
+		t.Errorf("Expected Marshal of NullRawValue to yield %x, got %x", NullBytes, marshaled)
 	}
 
 	unmarshaled := asn1.RawValue{}
-	if _, err := Unmarshal(asn1.NullBytes, &unmarshaled); err != nil {
+	if _, err := Unmarshal(NullBytes, &unmarshaled); err != nil {
 		t.Fatal(err)
 	}
 
-	unmarshaled.FullBytes = asn1.NullRawValue.FullBytes
+	unmarshaled.FullBytes = NullRawValue.FullBytes
 	if len(unmarshaled.Bytes) == 0 {
 		// DeepEqual considers a nil slice and an empty slice to be different.
-		unmarshaled.Bytes = asn1.NullRawValue.Bytes
+		unmarshaled.Bytes = NullRawValue.Bytes
 	}
 
-	if !reflect.DeepEqual(asn1.NullRawValue, unmarshaled) {
-		t.Errorf("Expected Unmarshal of NullBytes to yield %v, got %v", asn1.NullRawValue, unmarshaled)
+	if !reflect.DeepEqual(NullRawValue, unmarshaled) {
+		t.Errorf("Expected Unmarshal of NullBytes to yield %v, got %v", NullRawValue, unmarshaled)
 	}
 }
 
