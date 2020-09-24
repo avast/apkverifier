@@ -8,7 +8,7 @@ env:
   - GIMME_ARCH=amd64
   - GIMME_ARCH=386
 go:
-  - "1.8"
+  - "1.9"
   - "1.11" # uintptr -> unsafe.Pointer switch
   - 1.x
   - tip
@@ -20,7 +20,7 @@ matrix:
       go: tip
     - os: osx
       go: tip
-    - os: osx   # 1.8 produces binaries broken on new osx
-      go: "1.8"
+    - os: osx   # 1.9 produces binaries broken on new osx
+      go: "1.9"
 
 script: ./runtests.sh
