@@ -800,8 +800,11 @@ type ecdsaSignature dsaSignature
 
 func (p *schemeV1) checkSignature(cert *x509.Certificate, algo x509.SignatureAlgorithm, signed, signature []byte) error {
 	// Go1.15 rejects signatures without padding, add one.
-	if rsaPub, ok := cert.PublicKey.(*rsa.PublicKey); ok && len(signature) < rsaPub.Size() {
-		signature = append(make([]byte, rsaPub.Size()-len(signature)), signature...)
+	if rsaPub, ok := cert.PublicKey.(*rsa.PublicKey); ok {
+		pubSize := (rsaPub.N.BitLen() + 7) / 8 // rsaPub.Size(), but .Size() is only since go1.11
+		if len(signature) < pubSize {
+			signature = append(make([]byte, pubSize-len(signature)), signature...)
+		}
 	}
 
 	switch algo {
