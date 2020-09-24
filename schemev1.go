@@ -15,7 +15,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/avast/apkverifier/apilevel"
 	"hash"
 	"io"
 	"io/ioutil"
@@ -25,7 +24,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/avast/apkverifier/apilevel"
+
 	"crypto/ecdsa"
+
 	"github.com/avast/apkparser"
 	"github.com/avast/apkverifier/fullsailor/pkcs7"
 )
@@ -797,6 +799,11 @@ type dsaSignature struct {
 type ecdsaSignature dsaSignature
 
 func (p *schemeV1) checkSignature(cert *x509.Certificate, algo x509.SignatureAlgorithm, signed, signature []byte) error {
+	// Go1.15 rejects signatures without padding, add one.
+	if rsaPub, ok := cert.PublicKey.(*rsa.PublicKey); ok && len(signature) < rsaPub.Size() {
+		signature = append(make([]byte, rsaPub.Size()-len(signature)), signature...)
+	}
+
 	switch algo {
 	case x509.MD5WithRSA:
 		digest := md5.Sum(signed)

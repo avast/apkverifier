@@ -1037,7 +1037,7 @@ func (si *SignerInfo) UnmarshalSignedAttribute(attributeType asn1.ObjectIdentifi
 }
 
 func (si *SignerInfo) MarshalAuthenticatedAttributes() ([]byte, error) {
-	encodedAttributes, err := asn1.Marshal(struct {
+	encodedAttributes, err := asn1andr.Marshal(struct {
 		A []SignerAttribute `asn1:"set"`
 	}{A: si.AuthenticatedAttributes})
 	if err != nil {

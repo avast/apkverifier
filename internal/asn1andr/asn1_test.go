@@ -255,7 +255,7 @@ func TestObjectIdentifier(t *testing.T) {
 	}
 
 	if s := asn1.ObjectIdentifier([]int{1, 2, 3, 4}).String(); s != "1.2.3.4" {
-		t.Errorf("bad ObjectIdentifier.String(). Got %s, want 1.2.3.4", s)
+		t.Errorf("bad asn1.ObjectIdentifier.String(). Got %s, want 1.2.3.4", s)
 	}
 }
 
@@ -576,7 +576,7 @@ func TestCertificateWithNUL(t *testing.T) {
 
 	var cert Certificate
 	if _, err := Unmarshal(derEncodedPaypalNULCertBytes, &cert); err != nil {
-		t.Error("Unmarshal failed, should not have")
+		t.Error("Unmarshal succeeded, should not have")
 	}
 }
 
@@ -876,7 +876,7 @@ var stringSliceTestData = [][]string{
 
 func TestStringSlice(t *testing.T) {
 	for _, test := range stringSliceTestData {
-		bs, err := asn1.Marshal(test)
+		bs, err := Marshal(test)
 		if err != nil {
 			t.Error(err)
 		}
@@ -983,7 +983,7 @@ func TestMarshalNilValue(t *testing.T) {
 		struct{ V interface{} }{},
 	}
 	for i, test := range nilValueTestData {
-		if _, err := asn1.Marshal(test); err == nil {
+		if _, err := Marshal(test); err == nil {
 			t.Fatalf("#%d: successfully marshaled nil value", i)
 		}
 	}
@@ -1002,12 +1002,12 @@ type exported struct {
 func TestUnexportedStructField(t *testing.T) {
 	want := asn1.StructuralError{"struct contains unexported fields"}
 
-	_, err := asn1.Marshal(unexported{X: 5, y: 1})
+	_, err := Marshal(unexported{X: 5, y: 1})
 	if err != want {
 		t.Errorf("got %v, want %v", err, want)
 	}
 
-	bs, err := asn1.Marshal(exported{X: 5, Y: 1})
+	bs, err := Marshal(exported{X: 5, Y: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1019,7 +1019,7 @@ func TestUnexportedStructField(t *testing.T) {
 }
 
 func TestNull(t *testing.T) {
-	marshaled, err := asn1.Marshal(NullRawValue)
+	marshaled, err := Marshal(NullRawValue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1049,7 +1049,7 @@ func TestExplicitTagRawValueStruct(t *testing.T) {
 		B []byte        `asn1:"optional,explicit,tag:6"`
 	}
 	before := foo{B: []byte{1, 2, 3}}
-	derBytes, err := asn1.Marshal(before)
+	derBytes, err := Marshal(before)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1130,5 +1130,18 @@ func TestBMPString(t *testing.T) {
 			t.Errorf("#%d: decoding output resulted in %q, but it should have been %q", i, decoded, test.decoded)
 			continue
 		}
+	}
+}
+
+func TestNonMinimalEncodedOID(t *testing.T) {
+	h, err := hex.DecodeString("060a2a80864886f70d01010b")
+	if err != nil {
+		t.Fatalf("failed to decode from hex string: %s", err)
+	}
+	var oid asn1.ObjectIdentifier
+	_, err = Unmarshal(h, &oid)
+	// CHADRON: we want this to pass
+	if err != nil {
+		t.Fatalf("accepted non-minimally encoded oid")
 	}
 }

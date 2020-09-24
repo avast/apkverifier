@@ -44,7 +44,8 @@ type asn1.SyntaxError struct {
 	Msg string
 }
 
-func (e asn1.SyntaxError) Error() string { return "asn1: syntax error: " + e.Msg }*/
+func (e asn1.SyntaxError) Error() string { return "asn1: syntax error: " + e.Msg }
+*/
 
 // We start by dealing with each of the primitive types in turn.
 
@@ -153,17 +154,17 @@ func parseBigInt(bytes []byte) (*big.Int, error) {
 
 // BIT STRING
 
-// BitString is the structure to use when you want an ASN.1 BIT STRING type. A
+// asn1.BitString is the structure to use when you want an ASN.1 BIT STRING type. A
 // bit string is padded up to the nearest byte in memory and the number of
 // valid bits is recorded. Padding bits will be zero.
-/*type BitString struct {
+/*type asn1.BitString struct {
 	Bytes     []byte // bits packed into bytes.
 	BitLength int    // length in bits.
 }
 
 // At returns the bit at the given index. If the index is out of range it
 // returns false.
-func (b BitString) At(i int) int {
+func (b asn1.BitString) At(i int) int {
 	if i < 0 || i >= b.BitLength {
 		return 0
 	}
@@ -173,8 +174,8 @@ func (b BitString) At(i int) int {
 }
 
 // RightAlign returns a slice where the padding bits are at the beginning. The
-// slice may share memory with the BitString.
-func (b BitString) RightAlign() []byte {
+// slice may share memory with the asn1.BitString.
+func (b asn1.BitString) RightAlign() []byte {
 	shift := uint(8 - (b.BitLength % 8))
 	if shift == 8 || len(b.Bytes) == 0 {
 		return b.Bytes
@@ -190,7 +191,7 @@ func (b BitString) RightAlign() []byte {
 	return a
 }*/
 
-// parseBitString parses an ASN.1 bit string from the given byte slice and returns it.
+// parseasn1.BitString parses an ASN.1 bit string from the given byte slice and returns it.
 func parseBitString(bytes []byte) (ret asn1.BitString, err error) {
 	if len(bytes) == 0 {
 		err = asn1.SyntaxError{"zero length BIT STRING"}
@@ -211,7 +212,7 @@ func parseBitString(bytes []byte) (ret asn1.BitString, err error) {
 // NULL
 
 // NullRawValue is a RawValue with its Tag set to the ASN.1 NULL type tag (5).
-var NullRawValue = asn1.RawValue{Tag: TagNull}
+var NullRawValue = asn1.NullRawValue
 
 // NullBytes contains bytes representing the DER-encoded ASN.1 NULL type.
 var NullBytes = []byte{TagNull, 0}
@@ -313,6 +314,13 @@ func parseBase128Int(bytes []byte, initOffset int) (ret, offset int, err error) 
 		}
 		ret64 <<= 7
 		b := bytes[offset]
+		/* CHADRON: Ignore
+		// integers should be minimally encoded, so the leading octet should
+		// never be 0x80
+		if shifted == 0 && b == 0x80 {
+			err = asn1.SyntaxError{"integer is not minimally encoded"}
+			return
+		}*/
 		ret64 |= int64(b & 0x7f)
 		offset++
 		if b&0x80 == 0 {
@@ -398,13 +406,15 @@ func isNumeric(b byte) bool {
 // array and returns it.
 func parsePrintableString(bytes []byte) (ret string, err error) {
 	// CHADRON: Android does not care, ignore.
-	// Sample: 0062556f369b805327ed57d037c58aa38035a8ca977c257f58f82b6db1897270
+	//Sample: 0062556f369b805327ed57d037c58aa38035a8ca977c257f58f82b6db1897270
 	//
-	/*	if !isPrintable(b, allowAsterisk, allowAmpersand) {
-			err = asn1.SyntaxError{"PrintableString contains invalid character"}
-			return
-		}
-	}*/
+	/*
+		for _, b := range bytes {
+			if !isPrintable(b, allowAsterisk, allowAmpersand) {
+				err = asn1.SyntaxError{"PrintableString contains invalid character"}
+				return
+			}
+		}*/
 	ret = string(bytes)
 	return
 }
@@ -1033,12 +1043,18 @@ func setDefaultValue(v reflect.Value, params fieldParameters) (ok bool) {
 // Because Unmarshal uses the reflect package, the structs
 // being written to must use upper case field names.
 //
+// After parsing b, any bytes that were leftover and not used to fill
+// val will be returned in rest. When parsing a SEQUENCE into a struct,
+// any trailing elements of the SEQUENCE that do not have matching
+// fields in val will not be included in rest, as these are considered
+// valid elements of the SEQUENCE and not trailing data.
+//
 // An ASN.1 INTEGER can be written to an int, int32, int64,
 // or *big.Int (from the math/big package).
 // If the encoded value does not fit in the Go type,
 // Unmarshal returns a parse error.
 //
-// An ASN.1 BIT STRING can be written to a BitString.
+// An ASN.1 BIT STRING can be written to a asn1.BitString.
 //
 // An ASN.1 OCTET STRING can be written to a []byte.
 //
