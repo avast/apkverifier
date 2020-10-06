@@ -22,5 +22,8 @@ matrix:
       go: tip
     - os: osx   # 1.9 produces binaries broken on new osx
       go: "1.9"
+    - os: osx  # osx i386 support dropped in go1.15
+      go: "1.x"
+      env: GIMME_ARCH=386
 
 script: ./runtests.sh
