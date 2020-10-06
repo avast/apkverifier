@@ -822,9 +822,11 @@ func (p *schemeV1) checkSignature(cert *x509.Certificate, algo x509.SignatureAlg
 			return fmt.Errorf("Unexpected public key type (%T)!", cert.PublicKey)
 		}
 		return rsa.VerifyPKCS1v15(pub, crypto.SHA224, digest[:], signature)
-	case DSAWithSHA224, x509.DSAWithSHA256:
+	case x509.DSAWithSHA1, DSAWithSHA224, x509.DSAWithSHA256:
 		var hasher hash.Hash
 		switch algo {
+		case x509.DSAWithSHA1:
+			hasher = sha1.New()
 		case x509.DSAWithSHA256:
 			hasher = sha256.New()
 		case DSAWithSHA224:

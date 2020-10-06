@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
@@ -42,9 +43,14 @@ func TestVerifyEC2(t *testing.T) {
 	if err != nil {
 		t.Errorf("Parse encountered unexpected error: %v", err)
 	}
+
 	p7.Certificates = []*x509.Certificate{fixture.Certificate}
 	if err := p7.Verify(); err != nil {
-		t.Errorf("Verify failed with error: %v", err)
+		if strings.Contains(err.Error(), "algorithm unimplemented") {
+			t.Skip("DSA is not supported since go1.16, ignoring:", err)
+		} else {
+			t.Errorf("Verify failed with error: %v", err)
+		}
 	}
 }
 
