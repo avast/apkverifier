@@ -7,13 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
-	"github.com/avast/apkverifier"
-	"github.com/avast/apkverifier/apilevel"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/avast/apkverifier"
+	"github.com/avast/apkverifier/apilevel"
 )
 
 func Example() {
@@ -753,6 +754,13 @@ func TestLineageFromAPKWithNoLineageFails(t *testing.T) {
 	// This APK is based off the v1v2v3-with-rsa-2048-lineage-3-signers.apk with a bit flip
 	// in the lineage attribute ID in the V3 signature block.
 	assertNoLineage(t, "v1v2v3-with-rsa-2048-lineage-3-signers-invalid-lineage-attr.apk", false)
+}
+
+func TestAsn1UnprintableSchemeV1(t *testing.T) {
+	_, err := apkverifier.VerifyWithSdkVersion("testdata/asn1_unprintable.apk", nil, apilevel.V_AnyMin, apilevel.V_AnyMax)
+	if err == nil || !strings.Contains(err.Error(), "cannot be verified using v1 scheme, downgrade attack?") {
+		t.Fatalf("Invalid result for asn1_unprintable.apk, expected 'downgrade attack' error, got %v", err)
+	}
 }
 
 func assertVerifiedForEach(t *testing.T, format string, names []string) {
