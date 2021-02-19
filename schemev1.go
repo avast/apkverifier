@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/avast/apkverifier/internal/asn1andr"
+
 	"github.com/avast/apkverifier/apilevel"
 
 	"crypto/ecdsa"
@@ -641,7 +643,7 @@ func (p *schemeV1) verifySignature(sig *schemeV1Signature, minSdkVersion, maxSdk
 		info := &signers[i]
 
 		var issuerSeq pkix.RDNSequence
-		if _, err := asn1.Unmarshal(info.IssuerAndSerialNumber.IssuerName.FullBytes, &issuerSeq); err != nil {
+		if _, err := asn1andr.Unmarshal(info.IssuerAndSerialNumber.IssuerName.FullBytes, &issuerSeq); err != nil {
 			return nil, err
 		}
 		var issuer pkix.Name
@@ -846,7 +848,7 @@ func (p *schemeV1) checkSignature(cert *x509.Certificate, algo x509.SignatureAlg
 		digest := hash[:reqLen]
 
 		dsaSig := new(dsaSignature)
-		if rest, err := asn1.Unmarshal(signature, dsaSig); err != nil {
+		if rest, err := asn1andr.Unmarshal(signature, dsaSig); err != nil {
 			return err
 		} else if len(rest) != 0 {
 			return errors.New("x509: trailing data after DSA signature")
@@ -866,7 +868,7 @@ func (p *schemeV1) checkSignature(cert *x509.Certificate, algo x509.SignatureAlg
 		}
 
 		ecdsaSig := new(ecdsaSignature)
-		if rest, err := asn1.Unmarshal(signature, ecdsaSig); err != nil {
+		if rest, err := asn1andr.Unmarshal(signature, ecdsaSig); err != nil {
 			return err
 		} else if len(rest) != 0 {
 			return errors.New("x509: trailing data after ECDSA signature")

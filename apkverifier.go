@@ -8,12 +8,13 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/avast/apkparser"
-	"github.com/avast/apkverifier/apilevel"
-	"github.com/avast/apkverifier/signingblock"
 	"io"
 	"os"
 	"strconv"
+
+	"github.com/avast/apkparser"
+	"github.com/avast/apkverifier/apilevel"
+	"github.com/avast/apkverifier/signingblock"
 )
 
 // Contains result of Apk verification
