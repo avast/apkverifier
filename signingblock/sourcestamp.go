@@ -100,7 +100,7 @@ func (v *sourceStampVerifier) VerifySourceV2Stamp(zip *apkparser.ZipReader, bloc
 	var srcStampHash []byte
 	srcStampHash, err = srcStampHashEntry.ReadAll(sourceStampHashSizeLimit)
 	if err != nil {
-		v.addError("failed to read from %s: %w", sourceStampZipEntryName, err)
+		v.addError("failed to read from %s: %s", sourceStampZipEntryName, err.Error())
 		return
 	} else if len(srcStampHash) >= sourceStampHashSizeLimit {
 		v.addError("The %s file is too big", sourceStampZipEntryName)
