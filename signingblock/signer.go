@@ -29,9 +29,29 @@ const (
 	SigVerityDsaWithSha256                            = 0x425
 )
 
+type contentDigest int
+
 const (
-	veritySHA256 crypto.Hash = iota + 65535
+	digestChunkedSha256    = 1
+	digestChunkedSha512    = 2
+	digestVeritySha256     = 3
+	digestNonChunkedSha256 = 4
 )
+
+func (c contentDigest) Hash() crypto.Hash {
+	switch c {
+	case digestChunkedSha256:
+		return crypto.SHA256
+	case digestChunkedSha512:
+		return crypto.SHA512
+	case digestVeritySha256:
+		return crypto.SHA256
+	case digestNonChunkedSha256:
+		return crypto.SHA256
+	default:
+		panic(fmt.Sprintf("Unknown contentDigest: %d", c))
+	}
+}
 
 func (algo SignatureAlgorithm) String() string {
 	switch algo {
@@ -72,14 +92,14 @@ func (algo SignatureAlgorithm) isSupported() bool {
 	}
 }
 
-func (algo SignatureAlgorithm) getDigestType() crypto.Hash {
+func (algo SignatureAlgorithm) getDigestType() contentDigest {
 	switch algo {
 	case SigRsaPssWithSha256, SigRsaPkcs1V15WithSha256, SigEcdsaWithSha256, SigDsaWithSha256:
-		return crypto.SHA256
+		return digestChunkedSha256
 	case SigVerityRsaPkcs1V15WithSha256, SigVerityEcdsaWithSha256, SigVerityDsaWithSha256:
-		return veritySHA256
+		return digestVeritySha256
 	case SigRsaPssWithSha512, SigRsaPkcs1V15WithSha512, SigEcdsaWithSha512:
-		return crypto.SHA512
+		return digestChunkedSha512
 	default:
 		panic(fmt.Sprintf("Unknown signature algorithm 0x%x", algo))
 	}
@@ -92,6 +112,34 @@ func (algo SignatureAlgorithm) getMinSdkVersion() int32 {
 		return apilevel.V7_0_Nougat
 	case SigVerityRsaPkcs1V15WithSha256, SigVerityEcdsaWithSha256, SigVerityDsaWithSha256:
 		return apilevel.V9_0_Pie
+	default:
+		return math.MaxInt32
+	}
+}
+
+/*
+const (
+	SigRsaPssWithSha256            SignatureAlgorithm = 0x0101
+	SigRsaPssWithSha512                               = 0x0102
+	SigRsaPkcs1V15WithSha256                          = 0x0103
+	SigRsaPkcs1V15WithSha512                          = 0x0104
+	SigEcdsaWithSha256                                = 0x0201
+	SigEcdsaWithSha512                                = 0x0202
+	SigDsaWithSha256                                  = 0x0301
+	SigVerityRsaPkcs1V15WithSha256                    = 0x0421
+	SigVerityEcdsaWithSha256                          = 0x0423
+	SigVerityDsaWithSha256                            = 0x425
+)
+*/
+func (algo SignatureAlgorithm) getMinSdkVersionJca() int32 {
+	switch algo {
+	case SigRsaPssWithSha256, SigRsaPssWithSha512:
+		return apilevel.V6_0_Marshmallow
+	case SigRsaPkcs1V15WithSha256, SigRsaPkcs1V15WithSha512, SigDsaWithSha256,
+		SigVerityRsaPkcs1V15WithSha256, SigVerityDsaWithSha256:
+		return apilevel.V1_0_InitialRelease
+	case SigEcdsaWithSha256, SigEcdsaWithSha512, SigVerityEcdsaWithSha256:
+		return apilevel.V3_0_Honeycomb
 	default:
 		return math.MaxInt32
 	}
@@ -136,7 +184,7 @@ func (s *signerContext) parseSignatures(signaturesSlice *bytes.Buffer) (success 
 			continue
 		}
 
-		if s.bestAlgo == -1 || s.compareAlgos(algo, s.bestAlgo) > 0 {
+		if s.bestAlgo == -1 || compareAlgos(algo, s.bestAlgo) > 0 {
 			s.bestAlgo = algo
 			sigBytes, err := getLenghtPrefixedSlice(signature)
 			if err != nil {
@@ -210,7 +258,7 @@ func (s *signerContext) parseCertificates(certificatesSlice *bytes.Buffer) (main
 	return mainCert, true
 }
 
-func (s *signerContext) parseDigests(digestsSlice *bytes.Buffer, contentDigests map[crypto.Hash][]byte) (success bool) {
+func (s *signerContext) parseDigests(digestsSlice *bytes.Buffer, contentDigests map[contentDigest][]byte) (success bool) {
 	var contentDigest []byte
 	var digestSigAlgorithms []SignatureAlgorithm
 	digestCount := 0
@@ -260,36 +308,34 @@ func (s *signerContext) parseDigests(digestsSlice *bytes.Buffer, contentDigests 
 	return true
 }
 
-func (s *signerContext) compareAlgos(a, b SignatureAlgorithm) int {
+func compareAlgos(a, b SignatureAlgorithm) int {
 	digest1 := a.getDigestType()
 	digest2 := b.getDigestType()
 
+	if digest1 == digest2 {
+		return 0
+	}
+
 	switch digest1 {
-	case crypto.SHA256:
+	case digestChunkedSha256:
 		switch digest2 {
-		case crypto.SHA256:
-			return 0
-		case crypto.SHA512, veritySHA256:
+		case digestChunkedSha512, digestVeritySha256:
 			return -1
 		default:
 			panic(fmt.Sprintf("Unknown digest2: %d", digest2))
 		}
-	case crypto.SHA512:
+	case digestChunkedSha512:
 		switch digest2 {
-		case crypto.SHA256, veritySHA256:
+		case digestChunkedSha256, digestVeritySha256:
 			return 1
-		case crypto.SHA512:
-			return 0
 		default:
 			panic(fmt.Sprintf("Unknown digest2: %d", digest2))
 		}
-	case veritySHA256:
+	case digestVeritySha256:
 		switch digest2 {
-		case crypto.SHA256:
+		case digestChunkedSha256:
 			return 1
-		case veritySHA256:
-			return 0
-		case crypto.SHA512:
+		case digestChunkedSha512:
 			return -1
 		default:
 			panic(fmt.Sprintf("Unknown digest2: %d", digest2))

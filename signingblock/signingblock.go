@@ -2,7 +2,6 @@ package signingblock
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
@@ -12,6 +11,8 @@ import (
 	"io"
 	"math"
 	"os"
+
+	"github.com/avast/apkparser"
 
 	"github.com/avast/apkverifier/apilevel"
 )
@@ -32,13 +33,13 @@ const (
 
 	// Older SourceStamp implementation, you should not encounter this ID
 	// https://android.googlesource.com/platform/frameworks/base/+/549ce7a482ed4fe170ca445324fb38c447030404%5E%21/#F0
-	BlockIdSourceStampDeprecated BlockId = 0x2b09189e
+	BlockIdSourceStampV1 BlockId = 0x2b09189e
 
 	blockIdVerityPadding BlockId = 0x42726577
 	blockIdSchemeV2      BlockId = 0x7109871a
 	blockIdSchemeV3      BlockId = 0xf05368c0
 	blockIdFrosting      BlockId = 0x2146444e
-	blockIdSourceStamp   BlockId = 0x6dff800d
+	blockIdSourceStampV2 BlockId = 0x6dff800d
 )
 
 func (b BlockId) String() string {
@@ -47,10 +48,10 @@ func (b BlockId) String() string {
 		return "DependencyMetadata"
 	case BlockIdMeituanMetadata:
 		return "MeituanMetadata"
-	case BlockIdSourceStampDeprecated:
-		return "SourceStampDeprecated"
-	case blockIdSourceStamp:
-		return "SourceStamp"
+	case BlockIdSourceStampV1:
+		return "SourceStampV1 (deprecated)"
+	case blockIdSourceStampV2:
+		return "SourceStampV2"
 	case blockIdVerityPadding:
 		return "VerityPadding"
 	case blockIdSchemeV2:
@@ -60,7 +61,7 @@ func (b BlockId) String() string {
 	case blockIdFrosting:
 		return "PlayFrosting"
 	default:
-		return fmt.Sprintf("Unknown (0x%08x)", b)
+		return fmt.Sprintf("Unknown (0x%08x)", uint32(b))
 	}
 }
 
@@ -78,11 +79,11 @@ const (
 	apkSigBlockMagicHi = 0x3234206b636f6c42
 	apkSigBlockMagicLo = 0x20676953204b5041
 
+	maxChunkSize = 1024 * 1024
+
 	schemeIdV1 = 1
 	schemeIdV2 = 2
 	schemeIdV3 = 3
-
-	maxChunkSize = 1024 * 1024
 )
 
 var (
@@ -91,7 +92,7 @@ var (
 )
 
 type signatureBlockScheme interface {
-	parseSigners(block *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult)
+	parseSigners(block *bytes.Buffer, contentDigests map[contentDigest][]byte, result *VerificationResult)
 	finalizeResult(minSdkVersion, maxSdkVersion int32, result *VerificationResult)
 }
 
@@ -127,9 +128,17 @@ func VerifySigningBlock(path string, minSdkVersion, maxSdkVersion int32) (res *V
 	return VerifySigningBlockReader(f, minSdkVersion, maxSdkVersion)
 }
 
-func VerifySigningBlockReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (res *VerificationResult, magic uint32, err error) {
+func VerifySigningBlockReaderWithZip(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32, optionalZip *apkparser.ZipReader) (res *VerificationResult, magic uint32, err error) {
+	if optionalZip == nil {
+		optionalZip, err = apkparser.OpenZipReader(r)
+		if err != nil {
+			return
+		}
+		defer optionalZip.Close()
+	}
+
 	var s *signingBlock
-	s, magic, err = newSigningBlock(r, maxSdkVersion)
+	s, magic, err = newSigningBlock(r)
 	if err != nil {
 		return
 	}
@@ -137,7 +146,7 @@ func VerifySigningBlockReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int3
 	res = &VerificationResult{}
 	blocks, frosting, err := s.findSignatureBlocks(maxSdkVersion, res)
 	if frosting != nil && res.Frosting.Error == nil {
-		res.Frosting.Error = frosting.verifyApk(r, s.sigBlockOffset, blocks[schemeIdV2], s.centralDirOffset, s.centralDirSize, s.eocd)
+		res.Frosting.Error = frosting.verifyApk(r, s.sigBlockOffset, blocks[blockIdSchemeV2], s.centralDirOffset, s.centralDirSize, s.eocd)
 	}
 	if err != nil {
 		err = &signingBlockNotFoundError{err}
@@ -146,11 +155,28 @@ func VerifySigningBlockReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int3
 
 	var block []byte
 	var scheme signatureBlockScheme
+	var contentDigests map[contentDigest][]byte
 	res.SchemeId, scheme, block = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
+	if scheme != nil {
+		contentDigests = s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
+	} else {
+		res.Errors = append(res.Errors, &signingBlockNotFoundError{errors.New("No APK Signature block in APK Signing Block")})
+	}
 
-	s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
+	stampVerifier := sourceStampVerifier{
+		verifiedSchemeId: int32(res.SchemeId),
+		minSdkVersion:    minSdkVersion,
+		maxSdkVersion:    maxSdkVersion,
+	}
+
+	res.SourceStamp = stampVerifier.VerifySourceV2Stamp(optionalZip, blocks[blockIdSourceStampV2], contentDigests)
+
 	err = res.GetLastError()
 	return
+}
+
+func VerifySigningBlockReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (res *VerificationResult, magic uint32, err error) {
+	return VerifySigningBlockReaderWithZip(r, minSdkVersion, maxSdkVersion, nil)
 }
 
 func ExtractCerts(path string, minSdkVersion, maxSdkVersion int32) (certs [][]*x509.Certificate, err error) {
@@ -164,7 +190,7 @@ func ExtractCerts(path string, minSdkVersion, maxSdkVersion int32) (certs [][]*x
 
 func ExtractCertsReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (certs [][]*x509.Certificate, err error) {
 	var s *signingBlock
-	s, _, err = newSigningBlock(r, maxSdkVersion)
+	s, _, err = newSigningBlock(r)
 	if err != nil {
 		return
 	}
@@ -184,12 +210,7 @@ func ExtractCertsReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (ce
 	return res.Certs, res.GetLastError()
 }
 
-func newSigningBlock(r io.ReadSeeker, maxSdkVersion int32) (sblock *signingBlock, magic uint32, err error) {
-	if !apilevel.SupportsSigV2(maxSdkVersion) {
-		err = &signingBlockNotFoundError{errors.New("unsupported SDK version, requires at least N")}
-		return
-	}
-
+func newSigningBlock(r io.ReadSeeker) (sblock *signingBlock, magic uint32, err error) {
 	size, err := r.Seek(0, io.SeekEnd)
 	if err != nil {
 		err = fmt.Errorf("failed to seek to the end of the APK file: %s", err.Error())
@@ -291,15 +312,15 @@ func (s *signingBlock) isZip64() bool {
 	return magic == zip64LocatorMagic
 }
 
-func (s *signingBlock) pickScheme(blocks map[int][]byte, minSdkVersion, maxSdkVersion int32) (schemeId int, scheme signatureBlockScheme, block []byte) {
-	if block = blocks[schemeIdV3]; block != nil {
+func (s *signingBlock) pickScheme(blocks map[BlockId][]byte, minSdkVersion, maxSdkVersion int32) (schemeId int, scheme signatureBlockScheme, block []byte) {
+	if block = blocks[blockIdSchemeV3]; block != nil {
 		schemeId = schemeIdV3
 		scheme = &schemeV3{}
-	} else if block = blocks[schemeIdV2]; block != nil {
+	} else if block = blocks[blockIdSchemeV2]; block != nil {
 		schemeId = schemeIdV2
 		scheme = &schemeV2{minSdkVersion, maxSdkVersion}
 	} else {
-		panic("unhandled")
+		schemeId = schemeIdV1
 	}
 	return
 }
@@ -362,7 +383,7 @@ func (s *signingBlock) findApkSigningBlock() (block []byte, offset int64, err er
 	return
 }
 
-func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *VerificationResult) (blocks map[int][]byte, frostingRes *frostingInfo, err error) {
+func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *VerificationResult) (blocks map[BlockId][]byte, frostingRes *frostingInfo, err error) {
 	if err = s.findEocd(); err != nil {
 		err = &signingBlockNotFoundError{err}
 		return
@@ -383,8 +404,7 @@ func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *Verificatio
 	pairs := bytes.NewReader(sigBlock[8 : len(sigBlock)-24])
 	entryCount := 0
 
-	blocks = make(map[int][]byte)
-
+	blocks = make(map[BlockId][]byte)
 	for pairs.Len() > 0 {
 		entryCount++
 
@@ -413,21 +433,23 @@ func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *Verificatio
 			return
 		}
 
-		switch BlockId(id) {
+		switch bid := BlockId(id); bid {
 		case blockIdSchemeV3:
 			if apilevel.SupportsSigV3(maxSdkVersion) {
 				block := make([]byte, entryLen-4)
 				if _, err = pairs.Read(block); err != nil {
 					return
 				}
-				blocks[schemeIdV3] = block
+				blocks[bid] = block
 			}
 		case blockIdSchemeV2:
-			block := make([]byte, entryLen-4)
-			if _, err = pairs.Read(block); err != nil {
-				return
+			if apilevel.SupportsSigV2(maxSdkVersion) {
+				block := make([]byte, entryLen-4)
+				if _, err = pairs.Read(block); err != nil {
+					return
+				}
+				blocks[bid] = block
 			}
-			blocks[schemeIdV2] = block
 		case blockIdVerityPadding:
 			// Block full of zeros to ensure the signing block is padded to 4K,
 			// for verity signature verification.
@@ -446,8 +468,12 @@ func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *Verificatio
 			} else {
 				frostingRes = &frosting
 			}
-		case blockIdSourceStamp:
-			// TODO
+		case blockIdSourceStampV2:
+			block := make([]byte, entryLen-4)
+			if _, err = pairs.Read(block); err != nil {
+				return
+			}
+			blocks[bid] = block
 		default:
 			block := make([]byte, entryLen-4)
 			if _, err = pairs.Read(block); err != nil {
@@ -456,7 +482,7 @@ func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *Verificatio
 			if res.ExtraBlocks == nil {
 				res.ExtraBlocks = make(map[BlockId][]byte)
 			}
-			res.ExtraBlocks[BlockId(id)] = block
+			res.ExtraBlocks[bid] = block
 		}
 
 		if _, err = pairs.Seek(nextEntryPos, io.SeekStart); err != nil {
@@ -464,41 +490,38 @@ func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *Verificatio
 		}
 	}
 
-	if len(blocks) == 0 {
-		err = errors.New("No APK Signature block in APK Signing Block")
-	}
-
 	return
 }
 
-func (s *signingBlock) extractCerts(scheme signatureBlockScheme, block []byte, res *VerificationResult) map[crypto.Hash][]byte {
-	contentDigests := make(map[crypto.Hash][]byte)
+func (s *signingBlock) extractCerts(scheme signatureBlockScheme, block []byte, res *VerificationResult) map[contentDigest][]byte {
+	contentDigests := make(map[contentDigest][]byte)
 	signatureBlock := bytes.NewBuffer(block)
 
 	scheme.parseSigners(signatureBlock, contentDigests, res)
 	return contentDigests
 }
 
-func (s *signingBlock) verify(scheme signatureBlockScheme, block []byte, minSdkVersion, maxSdkVersion int32, res *VerificationResult) {
+func (s *signingBlock) verify(scheme signatureBlockScheme, block []byte, minSdkVersion, maxSdkVersion int32, res *VerificationResult) map[contentDigest][]byte {
 	contentDigests := s.extractCerts(scheme, block, res)
 	if len(res.Certs) == 0 {
 		res.addError("no signers found")
-		return
+		return nil
 	}
 
 	if len(contentDigests) == 0 {
 		res.addError("no content digests found")
-		return
+		return nil
 	}
 
 	if !s.verifyIntegrity(contentDigests, res) {
-		return
+		return contentDigests
 	}
 
 	scheme.finalizeResult(minSdkVersion, maxSdkVersion, res)
+	return contentDigests
 }
 
-func (s *signingBlock) verifyIntegrity(expectedDigests map[crypto.Hash][]byte, result *VerificationResult) bool {
+func (s *signingBlock) verifyIntegrity(expectedDigests map[contentDigest][]byte, result *VerificationResult) bool {
 	beforeApkSigningBlock := &dataSourceApk{file: s.file, start: 0, end: s.sigBlockOffset}
 	centralDir := &dataSourceApk{file: s.file, start: s.centralDirOffset, end: s.eocdOffset}
 	eocd := &dataSourceBytes{data: append([]byte(nil), s.eocd...)}
@@ -507,7 +530,7 @@ func (s *signingBlock) verifyIntegrity(expectedDigests map[crypto.Hash][]byte, r
 	// Central Directory must be considered to point to the offset of the APK Signing Block.
 	binary.LittleEndian.PutUint32(eocd.data[eocdCentralDirOffsetOffset:], uint32(s.sigBlockOffset))
 
-	digestAlgorithms := make([]crypto.Hash, 0, len(expectedDigests))
+	digestAlgorithms := make([]contentDigest, 0, len(expectedDigests))
 	for algo := range expectedDigests {
 		digestAlgorithms = append(digestAlgorithms, algo)
 	}
@@ -528,21 +551,21 @@ func (s *signingBlock) verifyIntegrity(expectedDigests map[crypto.Hash][]byte, r
 	return true
 }
 
-func (s *signingBlock) computeContentDigests(digestAlgorithms []crypto.Hash, contents ...dataSource) (map[crypto.Hash][]byte, error) {
-	var oneMbAlgos []crypto.Hash
+func (s *signingBlock) computeContentDigests(digestAlgorithms []contentDigest, contents ...dataSource) (map[contentDigest][]byte, error) {
+	var oneMbAlgos []contentDigest
 	hasVerity := false
 	for _, algo := range digestAlgorithms {
 		switch algo {
-		case crypto.SHA256, crypto.SHA512:
+		case digestChunkedSha256, digestChunkedSha512:
 			oneMbAlgos = append(oneMbAlgos, algo)
-		case veritySHA256:
+		case digestVeritySha256:
 			hasVerity = true
 		default:
 			panic(fmt.Sprintf("unhandled crypto algo %d", int(algo)))
 		}
 	}
 
-	var result map[crypto.Hash][]byte
+	var result map[contentDigest][]byte
 	var err error
 	if len(oneMbAlgos) != 0 {
 		result, err = s.computeOneMbChunkContentDigests(oneMbAlgos, contents)
@@ -553,9 +576,9 @@ func (s *signingBlock) computeContentDigests(digestAlgorithms []crypto.Hash, con
 
 	if hasVerity {
 		if result == nil {
-			result = make(map[crypto.Hash][]byte)
+			result = make(map[contentDigest][]byte)
 		}
-		result[veritySHA256], err = s.computeVerityContentDigest(contents)
+		result[digestVeritySha256], err = s.computeVerityContentDigest(contents)
 		if err != nil {
 			return result, err
 		}
@@ -568,7 +591,7 @@ func (s *signingBlock) computeContentDigests(digestAlgorithms []crypto.Hash, con
 	return result, nil
 }
 
-func (s *signingBlock) computeOneMbChunkContentDigests(digestAlgorithms []crypto.Hash, contents []dataSource) (map[crypto.Hash][]byte, error) {
+func (s *signingBlock) computeOneMbChunkContentDigests(digestAlgorithms []contentDigest, contents []dataSource) (map[contentDigest][]byte, error) {
 	var totalChunkCount int64
 	for _, input := range contents {
 		totalChunkCount += input.chunkCount()
@@ -581,12 +604,12 @@ func (s *signingBlock) computeOneMbChunkContentDigests(digestAlgorithms []crypto
 	digestsOfChunks := make([][]byte, len(digestAlgorithms))
 	hashers := make([]hash.Hash, len(digestAlgorithms))
 	for i, algo := range digestAlgorithms {
-		buf := make([]byte, 5+totalChunkCount*int64(algo.Size()))
+		buf := make([]byte, 5+totalChunkCount*int64(algo.Hash().Size()))
 		buf[0] = 0x5a
 		binary.LittleEndian.PutUint32(buf[1:], uint32(totalChunkCount))
 
 		digestsOfChunks[i] = buf
-		hashers[i] = algo.New()
+		hashers[i] = algo.Hash().New()
 	}
 
 	chunkContentPrefix := make([]byte, 5)
@@ -621,7 +644,7 @@ func (s *signingBlock) computeOneMbChunkContentDigests(digestAlgorithms []crypto
 			chunkIndex++
 		}
 	}
-	result := make(map[crypto.Hash][]byte, len(digestAlgorithms))
+	result := make(map[contentDigest][]byte, len(digestAlgorithms))
 	for i := range digestsOfChunks {
 		hashers[i].Write(digestsOfChunks[i])
 		result[digestAlgorithms[i]] = hashers[i].Sum(nil)

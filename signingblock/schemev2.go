@@ -2,8 +2,8 @@ package signingblock
 
 import (
 	"bytes"
-	"crypto"
 	"encoding/binary"
+
 	"github.com/avast/apkverifier/apilevel"
 )
 
@@ -15,7 +15,7 @@ type schemeV2 struct {
 	minSdkVersion, maxSdkVersion int32
 }
 
-func (s *schemeV2) parseSigners(block *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult) {
+func (s *schemeV2) parseSigners(block *bytes.Buffer, contentDigests map[contentDigest][]byte, result *VerificationResult) {
 	signers, err := getLenghtPrefixedSlice(block)
 	if err != nil {
 		result.addError("failed to read list of signers: %s", err.Error())
@@ -40,7 +40,7 @@ func (s *schemeV2) finalizeResult(minSdkVersion, maxSdkVersion int32, result *Ve
 
 }
 
-func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult) {
+func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[contentDigest][]byte, result *VerificationResult) {
 	signedData, err := getLenghtPrefixedSlice(signerBlock)
 	if err != nil {
 		result.addError("failed to read signed data: %s", err.Error())

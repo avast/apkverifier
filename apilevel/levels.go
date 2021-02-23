@@ -13,32 +13,34 @@ const (
 	V_AnyMin int32 = -1            // Minimum sdk version, if you don't care about the lower bound
 	V_AnyMax int32 = math.MaxInt32 // Maximum sdk version, if you don't care about the upper bound
 
-	V1_5_Cupcake       int32 = 3
-	V1_6_Donut         int32 = 4
-	V2_0_Eclair        int32 = 5
-	V2_0_1_Eclair      int32 = 6
-	V2_1_Eclair        int32 = 7
-	V2_2_Froyo         int32 = 8
-	V2_3_Gingerbread   int32 = 9
-	V2_3_3_Gingerbread int32 = 10
-	V3_0_Honeycomb     int32 = 11
-	V3_1_Honeycomb     int32 = 12
-	V3_2_Honeycomb     int32 = 13
-	V4_0_1_ICS         int32 = 14
-	V4_0_3_ICS         int32 = 15
-	V4_1_JellyBean     int32 = 16
-	V4_2_JellyBean     int32 = 17
-	V4_3_JellyBean     int32 = 18
-	V4_4_KitKat        int32 = 19
-	V5_0_Lollipop      int32 = 21
-	V5_1_Lollipop      int32 = 22
-	V6_0_Marshmallow   int32 = 23
-	V7_0_Nougat        int32 = 24
-	V7_1_Nougat        int32 = 25
-	V8_0_Oreo          int32 = 26
-	V8_1_Oreo          int32 = 27
-	V9_0_Pie           int32 = 28
-	V10_0_Ten          int32 = 29
+	V1_0_InitialRelease int32 = 1
+	V1_5_Cupcake        int32 = 3
+	V1_6_Donut          int32 = 4
+	V2_0_Eclair         int32 = 5
+	V2_0_1_Eclair       int32 = 6
+	V2_1_Eclair         int32 = 7
+	V2_2_Froyo          int32 = 8
+	V2_3_Gingerbread    int32 = 9
+	V2_3_3_Gingerbread  int32 = 10
+	V3_0_Honeycomb      int32 = 11
+	V3_1_Honeycomb      int32 = 12
+	V3_2_Honeycomb      int32 = 13
+	V4_0_1_ICS          int32 = 14
+	V4_0_3_ICS          int32 = 15
+	V4_1_JellyBean      int32 = 16
+	V4_2_JellyBean      int32 = 17
+	V4_3_JellyBean      int32 = 18
+	V4_4_KitKat         int32 = 19
+	V5_0_Lollipop       int32 = 21
+	V5_1_Lollipop       int32 = 22
+	V6_0_Marshmallow    int32 = 23
+	V7_0_Nougat         int32 = 24
+	V7_1_Nougat         int32 = 25
+	V8_0_Oreo           int32 = 26
+	V8_1_Oreo           int32 = 27
+	V9_0_Pie            int32 = 28
+	V10_0_Ten           int32 = 29
+	V11_0_Eleven        int32 = 30
 )
 
 func SupportsSigV2(level int32) bool {
@@ -51,6 +53,10 @@ func SupportsSigV3(level int32) bool {
 
 func RequiresSandboxV2(level int32) bool {
 	return level >= V8_0_Oreo
+}
+
+func SupportsStampVerification(level int32) bool {
+	return level >= V11_0_Eleven
 }
 
 func String(level int32) string {
@@ -107,6 +113,8 @@ func String(level int32) string {
 		return "V9_0_Pie"
 	case V10_0_Ten:
 		return "V10_0_Ten"
+	case V11_0_Eleven:
+		return "V11_0_Eleven"
 	case V_AnyMin:
 		return "-Infinity"
 	case V_AnyMax:

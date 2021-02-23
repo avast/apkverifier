@@ -12,6 +12,8 @@ type VerificationResult struct {
 
 	Frosting *FrostingResult
 
+	SourceStamp *SourceStampResult
+
 	// Extra blocks found in the signing block that are not used by apkverifier,
 	// either completely unknown, or those found in BlockId constants.
 	// Parsed block types (schemeV2, V3, play frosting..) will NOT be in this map.

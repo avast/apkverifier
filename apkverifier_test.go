@@ -791,24 +791,24 @@ func assertVerificationFailure(t *testing.T, name string, expectedError string) 
 	assertVerificationFailureSdk(t, name, apilevel.V_AnyMin, apilevel.V_AnyMax, expectedError)
 }
 
-func assertVerificationFailureSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion int32, expectedError string) {
+func assertVerificationFailureSdk(t *testing.T, name string, minSdkVersion, maxSdkVersion int32, expectedError string) apkverifier.Result {
 	res, err := verify(t, name, minSdkVersion, maxSdkVersion)
 	if err == nil || expectedError == "" {
 		goto fail
 	}
 
 	if expectedError == anyErrorString {
-		return
+		return res
 	}
 
 	if strings.Contains(err.Error(), expectedError) {
-		return
+		return res
 	}
 
 	if res.SigningBlockResult != nil {
 		for _, err := range res.SigningBlockResult.Errors {
 			if strings.Contains(err.Error(), expectedError) {
-				return
+				return res
 			}
 		}
 	}
@@ -816,6 +816,7 @@ func assertVerificationFailureSdk(t *testing.T, name string, minSdkVersion, maxS
 fail:
 	t.Fatalf("%s was supposed to fail verification with '%s', but returned error %v instead\n%s",
 		name, expectedError, err, formatResult(t, res))
+	return res
 }
 
 func assertNoLineage(t *testing.T, name string, mustVerify bool) {

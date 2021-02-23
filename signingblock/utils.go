@@ -84,7 +84,7 @@ func verifySignature(publicKey interface{}, algo SignatureAlgorithm, signedDataB
 			}
 		}
 	default:
-		return errors.New("unhandled signature type")
+		return fmt.Errorf("unhandled signature type: 0x%04x", int32(algo))
 	}
 
 	return nil

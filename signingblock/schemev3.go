@@ -4,13 +4,13 @@ package signingblock
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/avast/apkverifier/apilevel"
 	"sort"
+
+	"github.com/avast/apkverifier/apilevel"
 )
 
 const (
@@ -20,7 +20,9 @@ const (
 )
 
 type schemeV3 struct {
-	signers []*schemeV3SignerInfo
+	minSdkVersion, maxSdkVersion int32
+	sourceStampBlock             []byte
+	signers                      []*schemeV3SignerInfo
 }
 
 type schemeV3SignerInfo struct {
@@ -28,7 +30,7 @@ type schemeV3SignerInfo struct {
 	minSdkVersion, maxSdkVersion int32
 }
 
-func (s *schemeV3) parseSigners(block *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult) {
+func (s *schemeV3) parseSigners(block *bytes.Buffer, contentDigests map[contentDigest][]byte, result *VerificationResult) {
 	signers, err := getLenghtPrefixedSlice(block)
 	if err != nil {
 		result.addError("failed to read list of signers: %s", err.Error())
@@ -95,7 +97,7 @@ func (s *schemeV3) finalizeResult(requestedMinSdkVersion, requestedMaxSdkVersion
 	}
 }
 
-func (s *schemeV3) verifySigner(signerBlock *bytes.Buffer, contentDigests map[crypto.Hash][]byte, result *VerificationResult) {
+func (s *schemeV3) verifySigner(signerBlock *bytes.Buffer, contentDigests map[contentDigest][]byte, result *VerificationResult) {
 	signedData, err := getLenghtPrefixedSlice(signerBlock)
 	if err != nil {
 		result.addError("failed to read signed data: %s", err.Error())
