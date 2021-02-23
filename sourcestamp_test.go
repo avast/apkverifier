@@ -3,7 +3,6 @@ package apkverifier_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"strings"
 	"testing"
 
@@ -49,8 +48,8 @@ func TestSourceStampSignatureMissing(t *testing.T) {
 
 func TestSourceStampCertificateMismatch(t *testing.T) {
 	r := stampAssertFailureSdk(t, "stamp-certificate-mismatch.apk", apilevel.V_AnyMin, apilevel.V_AnyMax, anyErrorString)
-	var merr *signingblock.SourceStampCertMismatchError
-	if err := r.SigningBlockResult.SourceStamp.Errors[0]; !errors.As(err, &merr) {
+	err := r.SigningBlockResult.SourceStamp.Errors[0]
+	if _, ok := err.(*signingblock.SourceStampCertMismatchError); !ok {
 		t.Fatalf("Expected SourceStampCertMismatchError from stamp-certificate-mismatch.apk, got %T: %v", err, err)
 	}
 }
