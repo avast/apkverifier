@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/avast/apkverifier/internal/x509andr"
 
 	"github.com/avast/apkverifier"
 	"github.com/avast/apkverifier/apilevel"
@@ -760,6 +763,15 @@ func TestAsn1UnprintableSchemeV1(t *testing.T) {
 	_, err := apkverifier.VerifyWithSdkVersion("testdata/asn1_unprintable.apk", nil, apilevel.V_AnyMin, apilevel.V_AnyMax)
 	if err == nil || !strings.Contains(err.Error(), "cannot be verified using v1 scheme, downgrade attack?") {
 		t.Fatalf("Invalid result for asn1_unprintable.apk, expected 'downgrade attack' error, got %v", err)
+	}
+}
+
+func TestAsn1SuperfluousLeadingZeros(t *testing.T) {
+	const certBase64 = `MIICFzCCAX+gAwIBAgIaNDc4MjQzM2U6MTJmMDE4M2FjZGI6LTgwMDAwDQYJKoZIhvcNAQEFBQAwODELMAkGA1UEBhMCVVMxCTAHBgNVBAoTADEJMAcGA1UECxMAMRMwEQYDVQQDEwpteUhlcml0YWdlMB4XDTExMDMyODEyMDgxN1oXDTM2MDMyOTExMDgxN1owODELMAkGA1UEBhMCVVMxCTAHBgNVBAoTADEJMAcGA1UECxMAMRMwEQYDVQQDEwpteUhlcml0YWdlMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCbJEkZRVOOTL9v8PUV76U9Etf5OJlOZU2laM5vyMK29QrlFZ9t7Xs06ozCd/2sVkap71NM3qDXVcQ8250a2/wU6YHJYf4D6v3f+/M507FRVynYpkegwYsUddmOcJaBlqU1V7DVZD2Qi+AMF/SE6dnP6pEJCh7w1mFyMMMTCvXqGQIDAQABoxcwFTATBgNVHSUEDDAKBggrBgEFBQcDAzANBgkqhkiG9w0BAQUFAAOCAIEAjY2I0M2x7QMFTTooad+fd6j43gMAzaVVGEXOLtNzAOQye1f+o/LmCB44BH0GPVUWN518e28NExY7EhfKNuhivT7R1Ht5xYMLoMCxIIsea+FCGRrzKLxJ+ncXP1KhHz/DHCB+e0TqniN1RsoXvnMEp1VxApzDQw7X78DFMiPrFPc=`
+	encodedCert, _ := base64.StdEncoding.DecodeString(certBase64)
+	_, err := x509andr.ParseCertificateForGo(encodedCert)
+	if err != nil {
+		t.Fatal("failed to parse cert", err)
 	}
 }
 

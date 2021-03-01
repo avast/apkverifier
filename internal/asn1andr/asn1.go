@@ -552,10 +552,11 @@ func parseTagAndLength(bytes []byte, initOffset int) (ret tagAndLength, offset i
 			return
 		}
 		// Tags should be encoded in minimal form.
+		/* CHADRON: Ignore
 		if ret.tag < 0x1f {
 			err = asn1.SyntaxError{"non-minimal tag"}
 			return
-		}
+		}*/
 	}
 	if offset >= len(bytes) {
 		err = asn1.SyntaxError{"truncated tag or length"}
@@ -589,17 +590,19 @@ func parseTagAndLength(bytes []byte, initOffset int) (ret tagAndLength, offset i
 			}
 			ret.length <<= 8
 			ret.length |= int(b)
+			/* CHADRON: Ignore
 			if ret.length == 0 {
 				// DER requires that lengths be minimal.
 				err = asn1.StructuralError{"superfluous leading zeros in length"}
 				return
-			}
+			}*/
 		}
+		/* CHADRON: Ignore
 		// Short lengths must be encoded in short form.
 		if ret.length < 0x80 {
 			err = asn1.StructuralError{"non-minimal length"}
 			return
-		}
+		}*/
 	}
 
 	return
