@@ -156,11 +156,11 @@ func VerifySigningBlockReaderWithZip(r io.ReadSeeker, minSdkVersion, maxSdkVersi
 	var block []byte
 	var scheme signatureBlockScheme
 	var contentDigests map[contentDigest][]byte
-	res.SchemeId, scheme, block = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
-	if scheme != nil {
-		contentDigests = s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
+	res.SchemeId, scheme, block, err = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
+	if err != nil {
+		res.Errors = append(res.Errors, err)
 	} else {
-		res.Errors = append(res.Errors, &signingBlockNotFoundError{errors.New("No APK Signature block in APK Signing Block")})
+		contentDigests = s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
 	}
 
 	stampVerifier := sourceStampVerifier{
@@ -204,7 +204,10 @@ func ExtractCertsReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (ce
 
 	var block []byte
 	var scheme signatureBlockScheme
-	res.SchemeId, scheme, block = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
+	res.SchemeId, scheme, block, err = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
+	if err != nil {
+		return nil, err
+	}
 
 	s.extractCerts(scheme, block, res)
 	return res.Certs, res.GetLastError()
@@ -312,7 +315,7 @@ func (s *signingBlock) isZip64() bool {
 	return magic == zip64LocatorMagic
 }
 
-func (s *signingBlock) pickScheme(blocks map[BlockId][]byte, minSdkVersion, maxSdkVersion int32) (schemeId int, scheme signatureBlockScheme, block []byte) {
+func (s *signingBlock) pickScheme(blocks map[BlockId][]byte, minSdkVersion, maxSdkVersion int32) (schemeId int, scheme signatureBlockScheme, block []byte, err error) {
 	if block = blocks[blockIdSchemeV3]; block != nil {
 		schemeId = schemeIdV3
 		scheme = &schemeV3{}
@@ -321,6 +324,7 @@ func (s *signingBlock) pickScheme(blocks map[BlockId][]byte, minSdkVersion, maxS
 		scheme = &schemeV2{minSdkVersion, maxSdkVersion}
 	} else {
 		schemeId = schemeIdV1
+		err = &signingBlockNotFoundError{errors.New("No APK Signature block in APK Signing Block")}
 	}
 	return
 }
