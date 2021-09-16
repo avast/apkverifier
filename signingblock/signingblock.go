@@ -146,21 +146,30 @@ func VerifySigningBlockReaderWithZip(r io.ReadSeeker, minSdkVersion, maxSdkVersi
 	res = &VerificationResult{}
 	blocks, frosting, err := s.findSignatureBlocks(maxSdkVersion, res)
 	if frosting != nil && res.Frosting.Error == nil {
-		res.Frosting.Error = frosting.verifyApk(r, s.sigBlockOffset, blocks[blockIdSchemeV2], s.centralDirOffset, s.centralDirSize, s.eocd)
+		v2block := blocks[blockIdSchemeV2]
+		if v2block == nil && len(res.ExtraBlocks) != 0 {
+			v2block = res.ExtraBlocks[blockIdSchemeV2]
+		}
+		res.Frosting.Error = frosting.verifyApk(r, s.sigBlockOffset, v2block, s.centralDirOffset, s.centralDirSize, s.eocd)
 	}
 	if err != nil {
 		err = &signingBlockNotFoundError{err}
 		return
 	}
 
-	var block []byte
-	var scheme signatureBlockScheme
 	var contentDigests map[contentDigest][]byte
-	res.SchemeId, scheme, block, err = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
-	if err != nil {
-		res.Errors = append(res.Errors, err)
+	if apilevel.SupportsSigV2(maxSdkVersion) {
+		var block []byte
+		var scheme signatureBlockScheme
+
+		res.SchemeId, scheme, block, err = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
+		if err != nil {
+			res.Errors = append(res.Errors, err)
+		} else {
+			contentDigests = s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
+		}
 	} else {
-		contentDigests = s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
+		res.SchemeId = 1
 	}
 
 	stampVerifier := sourceStampVerifier{
@@ -438,21 +447,18 @@ func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *Verificatio
 		}
 
 		switch bid := BlockId(id); bid {
-		case blockIdSchemeV3:
-			if apilevel.SupportsSigV3(maxSdkVersion) {
-				block := make([]byte, entryLen-4)
-				if _, err = pairs.Read(block); err != nil {
-					return
-				}
-				blocks[bid] = block
+		case blockIdSchemeV2, blockIdSchemeV3:
+			block := make([]byte, entryLen-4)
+			if _, err = pairs.Read(block); err != nil {
+				return
 			}
-		case blockIdSchemeV2:
-			if apilevel.SupportsSigV2(maxSdkVersion) {
-				block := make([]byte, entryLen-4)
-				if _, err = pairs.Read(block); err != nil {
-					return
-				}
+			if (bid == blockIdSchemeV2 && apilevel.SupportsSigV2(maxSdkVersion)) || (bid == blockIdSchemeV3 && apilevel.SupportsSigV3(maxSdkVersion)) {
 				blocks[bid] = block
+			} else {
+				if res.ExtraBlocks == nil {
+					res.ExtraBlocks = make(map[BlockId][]byte)
+				}
+				res.ExtraBlocks[bid] = block
 			}
 		case blockIdVerityPadding:
 			// Block full of zeros to ensure the signing block is padded to 4K,

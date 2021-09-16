@@ -104,13 +104,13 @@ func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReade
 	if res.SigningBlockResult != nil {
 		res.SignerCerts = res.SigningBlockResult.Certs
 		res.SigningSchemeId = res.SigningBlockResult.SchemeId
+	} else {
+		res.SigningSchemeId = 1
 	}
 
-	if signingblock.IsSigningBlockNotFoundError(signingBlockError) {
-		res.SigningSchemeId = 1
-	} else if signingBlockError != nil {
+	if signingBlockError != nil && !signingblock.IsSigningBlockNotFoundError(signingBlockError) {
 		return res, signingBlockError
-	} else if apilevel.SupportsSigV2(minSdkVersion) {
+	} else if apilevel.SupportsSigV2(minSdkVersion) && signingBlockError == nil {
 		return res, nil
 	}
 
