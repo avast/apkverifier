@@ -440,12 +440,27 @@ func (p *schemeV1) verifyMainManifest(apk *apkparser.ZipReader, minSdkVersion, m
 		}
 	}
 
-	required := make([]string, 1, len(apk.File))
-	required[0] = "AndroidManifest.xml"
+	required := make([]string, 0, len(apk.File))
+	hasAndroidManifest := false
+	hasBundleConfig := false
 	for path, zf := range apk.File {
+		if zf.IsDir {
+			continue
+		}
+
 		if !zf.IsDir && path != "AndroidManifest.xml" && !strings.HasPrefix(path, "META-INF/") {
 			required = append(required, path)
 		}
+
+		if path == "AndroidManifest.xml" {
+			hasAndroidManifest = true
+		} else if path == "BundleConfig.pb" {
+			hasBundleConfig = true
+		}
+	}
+
+	if !hasAndroidManifest && !hasBundleConfig {
+		required = append(required, "AndroidManifest.xml")
 	}
 
 	chainsSet := false
