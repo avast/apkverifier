@@ -748,15 +748,15 @@ func TestLineageFromAPKWithInvalidZipCDSizeFails(t *testing.T) {
 func TestLineageFromAPKWithNoLineageFails(t *testing.T) {
 	// This is a valid APK that has only been signed with the V1 and V2 signature schemes;
 	// since the lineage is an attribute in the V3 signature block this test should fail.
-	assertNoLineage(t, "golden-aligned-v1v2-out.apk", true)
+	assertNoLineage(t, "golden-aligned-v1v2-out.apk", true, apilevel.V_AnyMin)
 
 	// This is a valid APK signed with the V1, V2, and V3 signature schemes, but there is no
 	// lineage in the V3 signature block.
-	assertNoLineage(t, "golden-aligned-v1v2v3-out.apk", true)
+	assertNoLineage(t, "golden-aligned-v1v2v3-out.apk", true, apilevel.V_AnyMin)
 
 	// This APK is based off the v1v2v3-with-rsa-2048-lineage-3-signers.apk with a bit flip
 	// in the lineage attribute ID in the V3 signature block.
-	assertNoLineage(t, "v1v2v3-with-rsa-2048-lineage-3-signers-invalid-lineage-attr.apk", false)
+	assertNoLineage(t, "v1v2v3-with-rsa-2048-lineage-3-signers-invalid-lineage-attr.apk", false, apilevel.V9_0_Pie)
 }
 
 func TestAsn1UnprintableSchemeV1(t *testing.T) {
@@ -831,8 +831,8 @@ fail:
 	return res
 }
 
-func assertNoLineage(t *testing.T, name string, mustVerify bool) {
-	res, err := verify(t, name, apilevel.V_AnyMin, apilevel.V_AnyMax)
+func assertNoLineage(t *testing.T, name string, mustVerify bool, minlevel int32) {
+	res, err := verify(t, name, minlevel, apilevel.V_AnyMax)
 	if mustVerify != (err == nil) {
 		t.Fatalf("%s has wrong verification result %v, expected %v", name, err, mustVerify)
 	} else if res.SigningBlockResult == nil {

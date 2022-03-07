@@ -157,19 +157,21 @@ func VerifySigningBlockReaderWithZip(r io.ReadSeeker, minSdkVersion, maxSdkVersi
 		return
 	}
 
-	var contentDigests map[contentDigest][]byte
-	if apilevel.SupportsSigV2(maxSdkVersion) {
-		var block []byte
-		var scheme signatureBlockScheme
-
-		res.SchemeId, scheme, block, err = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
-		if err != nil {
-			res.Errors = append(res.Errors, err)
-		} else {
-			contentDigests = s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
+	contentDigests := s.pickAndVerify(blocks, minSdkVersion, maxSdkVersion, res)
+	// On levels < 28, we can fallback to v2 - v3 is not required to be valid.
+	// 1e2ab0af91dce1be16525d9d6d6e6d645788ea627edc64cb9cd379b35e01f53f
+	if res.ContainsErrors() && res.SchemeId == schemeIdV3 && minSdkVersion < apilevel.V9_0_Pie && blocks[blockIdSchemeV2] != nil {
+		if res.ExtraBlocks == nil {
+			res.ExtraBlocks = make(map[BlockId][]byte)
 		}
-	} else {
-		res.SchemeId = 1
+		res.ExtraBlocks[blockIdSchemeV3] = blocks[blockIdSchemeV3]
+		delete(blocks, blockIdSchemeV3)
+
+		for _, e := range res.Errors {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("schemeV3: %s", e.Error()))
+		}
+		res.Errors = nil
+		contentDigests = s.pickAndVerify(blocks, minSdkVersion, maxSdkVersion, res)
 	}
 
 	stampVerifier := sourceStampVerifier{
@@ -182,6 +184,24 @@ func VerifySigningBlockReaderWithZip(r io.ReadSeeker, minSdkVersion, maxSdkVersi
 
 	err = res.GetLastError()
 	return
+}
+
+func (s *signingBlock) pickAndVerify(blocks map[BlockId][]byte, minSdkVersion, maxSdkVersion int32, res *VerificationResult) map[contentDigest][]byte {
+	if !apilevel.SupportsSigV2(maxSdkVersion) {
+		res.SchemeId = 1
+		return nil
+	}
+
+	var block []byte
+	var err error
+	var scheme signatureBlockScheme
+	res.SchemeId, scheme, block, err = s.pickScheme(blocks, minSdkVersion, maxSdkVersion)
+	if err != nil {
+		res.Errors = append(res.Errors, err)
+		return nil
+	}
+
+	return s.verify(scheme, block, minSdkVersion, maxSdkVersion, res)
 }
 
 func VerifySigningBlockReader(r io.ReadSeeker, minSdkVersion, maxSdkVersion int32) (res *VerificationResult, magic uint32, err error) {

@@ -133,8 +133,10 @@ func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[co
 
 			switch strippedSchemeId {
 			case schemeIdV3:
-				result.addError("this apk was signed with v3 signing scheme, but it was stripped, downgrade attack?")
-				return
+				if result.ExtraBlocks[blockIdSchemeV3] == nil {
+					result.addError("this apk was signed with v3 signing scheme, but it was stripped, downgrade attack?")
+					return
+				}
 			default:
 				result.addError("unknown stripped scheme id: %d", strippedSchemeId)
 			}
