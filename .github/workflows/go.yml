@@ -16,9 +16,6 @@ jobs:
             check-latest: true
           - go-version: tip
             check-latest: true
-        exclude:
-          - os: macOS-latest
-            go-version: "1.9"
     runs-on: ${{matrix.os}}
     steps:
 
