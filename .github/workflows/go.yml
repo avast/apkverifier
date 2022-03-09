@@ -38,7 +38,7 @@ jobs:
 
     - name: Get dependencies
       run: |
-        ls -la && go get -v ./...
+        pwd && ls -la && go get -v ./...
 
     - name: Build
       run: ./runtests.sh
