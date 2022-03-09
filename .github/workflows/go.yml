@@ -2,6 +2,7 @@ name: Go
 on: [push]
 env:
   GO111MODULE: "auto"
+  GOPATH: "$GITHUB_WORKSPACE"
 jobs:
   build:
     name: Build
@@ -35,10 +36,14 @@ jobs:
 
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
+      with:
+        path: src/github.com/avast/apkverifier
 
     - name: Get dependencies
+      working-directory: ./src/github.com/avast/apkverifier
       run: |
-        pwd && ls -la && go get -v ./...
+        pwd && ls -la && env && go env && go get -v ./...
 
     - name: Build
+      working-directory: ./src/github.com/avast/apkverifier
       run: ./runtests.sh
