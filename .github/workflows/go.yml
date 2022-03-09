@@ -9,21 +9,32 @@ jobs:
           - macOS-latest
           - ubuntu-latest
           - windows-latest
-        go-version:
-          - "1.8"
-          - "1.11"
-          - "1.x"
+        version:
+          - go-version: "1.9"
+          - go-version: "1.11" # uintptr -> unsafe.Pointer switch
+          - go-version: "^1.17"
+            check-latest: true
+          - go-version: tip
+            check-latest: true
         exclude:
           - os: macOS-latest
-            go-version: "1.8" 
+            go-version: "1.9"
     runs-on: ${{matrix.os}}
     steps:
 
     - name: Setup Go ${{matrix.go-version}}
-      uses: actions/setup-go@v1
-      with:
-        go-version: ${{matrix.go-version}}
-      id: go
+      if: matrix.version.go-version != 'tip'
+      uses: actions/setup-go@v2
+      with: ${{matrix.version}}
+    - name: Install Go tip
+      if: matrix.version.go-version == 'tip'
+      run: |
+        curl -sL https://storage.googleapis.com/go-build-snap/go/linux-amd64/$(git ls-remote https://github.com/golang/go.git HEAD | awk '{print $1;}').tar.gz -o gotip.tar.gz
+        ls -lah gotip.tar.gz
+        mkdir -p ~/sdk/gotip
+        tar -C ~/sdk/gotip -xzf gotip.tar.gz
+        ~/sdk/gotip/bin/go version
+        echo "PATH=$HOME/go/bin:$HOME/sdk/gotip/bin/:$PATH" >> $GITHUB_ENV
 
     - name: Check out code into the Go module directory
       uses: actions/checkout@v1
