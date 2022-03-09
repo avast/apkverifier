@@ -2,7 +2,7 @@ name: Go
 on: [push]
 env:
   GO111MODULE: "auto"
-  GOPATH: ${{env.GITHUB_WORKSPACE}}
+  GOPATH: ${{github.workspace}}
 jobs:
   build:
     name: Build
