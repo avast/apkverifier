@@ -1,5 +1,7 @@
 name: Go
 on: [push]
+env:
+  GO111MODULE: "auto"
 jobs:
   build:
     name: Build
@@ -35,7 +37,6 @@ jobs:
       uses: actions/checkout@v1
 
     - name: Get dependencies
-      if: false
       run: |
         go get -v ./...
 
