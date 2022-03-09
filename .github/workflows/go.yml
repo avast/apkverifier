@@ -12,20 +12,31 @@ jobs:
           - macOS-latest
           - ubuntu-latest
           - windows-latest
-        version:
-          - go-version: "1.9"
-          - go-version: "1.11" # uintptr -> unsafe.Pointer switch
-          - go-version: "^1.17"
-            check-latest: true
+        go-version:
+          - "1.9"
+          - "1.11" # uintptr -> unsafe.Pointer switch
+          - "latest"
+          - "tip"
+        exclude:
+          - os: windows-latest
+            go-version: tip
+          - os: macOS-latest
+            go-version: tip
     runs-on: ${{matrix.os}}
     steps:
-
-    - name: Setup Go ${{matrix.version.go-version}}
-      if: matrix.version.go-version != 'tip'
+    - name: Setup Go ${{matrix.go-version}}
+      if: matrix.go-version != 'tip' && matrix.go-version != 'latest'
       uses: actions/setup-go@v2
-      with: ${{matrix.version}}
+      with:
+        go-version: ${{matrix.go-version}}
+    - name: Setup Go latest
+      if: matrix.go-version == 'latest'
+      uses: actions/setup-go@v2
+      with:
+        go-version: "^1.17"
+        check-latest: true
     - name: Install Go tip
-      if: matrix.version.go-version == 'tip'
+      if: matrix.go-version == 'tip'
       run: |
         curl -sL https://storage.googleapis.com/go-build-snap/go/linux-amd64/$(git ls-remote https://github.com/golang/go.git HEAD | awk '{print $1;}').tar.gz -o gotip.tar.gz
         ls -lah gotip.tar.gz
@@ -41,8 +52,7 @@ jobs:
 
     - name: Get dependencies
       working-directory: ./src/github.com/avast/apkverifier
-      run: |
-        pwd && ls -la && env && go env && go get -v ./...
+      run: go env && go get -v ./...
 
     - name: Build
       working-directory: ./src/github.com/avast/apkverifier
