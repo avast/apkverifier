@@ -22,7 +22,7 @@ jobs:
     runs-on: ${{matrix.os}}
     steps:
 
-    - name: Setup Go ${{matrix.go-version}}
+    - name: Setup Go ${{matrix.version.go-version}}
       if: matrix.version.go-version != 'tip'
       uses: actions/setup-go@v2
       with: ${{matrix.version}}
