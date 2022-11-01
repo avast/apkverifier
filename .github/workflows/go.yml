@@ -14,8 +14,7 @@ jobs:
           - ubuntu-latest
           - windows-latest
         go-version:
-          - "1.9"
-          - "1.11" # uintptr -> unsafe.Pointer switch
+          - "1.17"
           - "latest"
           - "tip"
         exclude:
@@ -34,7 +33,7 @@ jobs:
       if: matrix.go-version == 'latest'
       uses: actions/setup-go@v2
       with:
-        go-version: "^1.17"
+        go-version: "^1.19"
         check-latest: true
     - name: Install Go tip
       if: matrix.go-version == 'tip'

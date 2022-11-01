@@ -6,7 +6,7 @@
 APK signature verification, should support all algorithms and both scheme v1 and v2,
 including downgrade attack protection.
 
-**Works with Go 1.9 or higher.**
+**Works with Go 1.17 or higher.**
 
 Documentation on [GoDoc](https://godoc.org/github.com/avast/apkverifier)
 
