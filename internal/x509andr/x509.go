@@ -1405,6 +1405,12 @@ func andrCertToGoCert(certificate *Certificate) *x509.Certificate {
 	ourval := reflect.ValueOf(certificate).Elem()
 	for i := 0; i < ourval.NumField(); i++ {
 		n := ourval.Type().Field(i).Name
+		if n == "ExtKeyUsage" {
+			// ignore reflect.Value.Convert: value of type []x509andr.ExtKeyUsage cannot be converted to type []x509.ExtKeyUsage
+			// not used in Android certs anyway
+			continue
+		}
+
 		out := goval.FieldByName(n)
 		if out.IsValid() {
 			andrCertConvertVal(out, ourval.Field(i))
