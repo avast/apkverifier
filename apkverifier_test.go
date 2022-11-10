@@ -593,11 +593,16 @@ func TestZipCompressionMethodMismatchBetweenLfhAndCd(t *testing.T) {
 }
 
 func TestV1SignedAttrs(t *testing.T) {
+	// We do not care, it installs on real devices
+	// 0f2b96555e09ef5dd0e18c360c0b1b35666f68d0ed312586a259a3d1ee39b68a
+
 	apk := "v1-only-with-signed-attrs.apk"
-	assertVerificationFailureSdk(t, apk, apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "APKs with Signed Attributes broken on platforms")
+	//assertVerificationFailureSdk(t, apk, apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "APKs with Signed Attributes broken on platforms")
+	assertVerifiedSdk(t, apk, apilevel.V4_3_JellyBean, apilevel.V_AnyMax)
 	assertVerifiedSdk(t, apk, apilevel.V4_4_KitKat, apilevel.V_AnyMax)
 	apk = "v1-only-with-signed-attrs-signerInfo1-good-signerInfo2-good.apk"
-	assertVerificationFailureSdk(t, apk, apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "APKs with Signed Attributes broken on platforms")
+	//assertVerificationFailureSdk(t, apk, apilevel.V4_3_JellyBean, apilevel.V_AnyMax, "APKs with Signed Attributes broken on platforms")
+	assertVerifiedSdk(t, apk, apilevel.V4_3_JellyBean, apilevel.V_AnyMax)
 	assertVerifiedSdk(t, apk, apilevel.V4_4_KitKat, apilevel.V_AnyMax)
 }
 
