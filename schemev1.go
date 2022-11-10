@@ -710,9 +710,12 @@ func (p *schemeV1) verifySignature(sig *schemeV1Signature, minSdkVersion, maxSdk
 			//
 			// We thus reject such unsafe APKs, even if they verify on platforms before
 			// KitKat.
-			if minSdkVersion < apilevel.V4_4_KitKat {
+
+			// We do not care, it installs on real devices
+			// 0f2b96555e09ef5dd0e18c360c0b1b35666f68d0ed312586a259a3d1ee39b68a
+			/*if minSdkVersion < apilevel.V4_4_KitKat {
 				return chain, errors.New("APKs with Signed Attributes broken on platforms API LEVEL < 19")
-			}
+			}*/
 
 			if maxSdkVersion >= apilevel.V7_0_Nougat {
 				var typeVal asn1.ObjectIdentifier
