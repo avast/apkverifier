@@ -101,7 +101,7 @@ func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReade
 	var signingBlockError error
 	res.SigningBlockResult, fileMagic, signingBlockError = signingblock.VerifySigningBlockReaderWithZip(r, minSdkVersion, maxSdkVersion, optionalZip)
 
-	if res.SigningBlockResult != nil {
+	if res.SigningBlockResult != nil && !signingblock.IsSigningBlockNotFoundError(signingBlockError) {
 		res.SignerCerts = res.SigningBlockResult.Certs
 		res.SigningSchemeId = res.SigningBlockResult.SchemeId
 	} else {

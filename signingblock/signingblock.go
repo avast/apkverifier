@@ -418,19 +418,17 @@ func (s *signingBlock) findApkSigningBlock() (block []byte, offset int64, err er
 
 func (s *signingBlock) findSignatureBlocks(maxSdkVersion int32, res *VerificationResult) (blocks map[BlockId][]byte, frostingRes *frostingInfo, err error) {
 	if err = s.findEocd(); err != nil {
-		err = &signingBlockNotFoundError{err}
 		return
 	}
 
 	if s.isZip64() {
-		err = &signingBlockNotFoundError{errors.New("ZIP64 APK not supported")}
+		err = errors.New("ZIP64 APK not supported")
 		return
 	}
 
 	var sigBlock []byte
 	sigBlock, s.sigBlockOffset, err = s.findApkSigningBlock()
 	if err != nil {
-		err = &signingBlockNotFoundError{err}
 		return
 	}
 
