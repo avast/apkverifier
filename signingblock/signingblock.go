@@ -38,6 +38,7 @@ const (
 	blockIdVerityPadding BlockId = 0x42726577
 	blockIdSchemeV2      BlockId = 0x7109871a
 	blockIdSchemeV3      BlockId = 0xf05368c0
+	blockIdSchemeV31     BlockId = 0x1b93ad61
 	blockIdFrosting      BlockId = 0x2146444e
 	blockIdSourceStampV2 BlockId = 0x6dff800d
 )
@@ -58,6 +59,8 @@ func (b BlockId) String() string {
 		return "SchemeV2Signature"
 	case blockIdSchemeV3:
 		return "SchemeV3Signature"
+	case blockIdSchemeV31:
+		return "SchemeV31Signature"
 	case blockIdFrosting:
 		return "PlayFrosting"
 	default:

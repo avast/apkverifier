@@ -87,7 +87,13 @@ func (s *schemeV3) finalizeResult(requestedMinSdkVersion, requestedMaxSdkVersion
 	}
 
 	if firstMin > requestedMinSdkVersion || lastMax < requestedMaxSdkVersion {
-		result.addError("missing sdk versions, supports only <%d;%d>", firstMin, lastMax)
+		msg := fmt.Sprintf("missing sdk versions, supports only <%d;%d>, got range (%d;%d)", firstMin, lastMax, requestedMinSdkVersion, requestedMaxSdkVersion)
+		if lastMax == apilevel.V12_1_S_V2 && result.ExtraBlocks[blockIdSchemeV31] != nil {
+			result.addWarning("%s, this would be an error on apksigner older than Android 13", msg)
+		} else {
+			result.addError(msg)
+		}
+
 	}
 
 	var err error
