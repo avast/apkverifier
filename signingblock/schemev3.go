@@ -15,14 +15,18 @@ import (
 
 const (
 	attrV3ProofOfRotation = 0x3ba06f8c
+	attrV3MinSdkVersion   = 0x559f8b02
+	attrV3RotationOnDev   = 0xc2a6b3ba
 
 	lineageVersionFirst = 1
 )
 
 type schemeV3 struct {
+	actingAsV31                  bool
 	minSdkVersion, maxSdkVersion int32
 	sourceStampBlock             []byte
 	signers                      []*schemeV3SignerInfo
+	rotationMinSdkVersion        int32
 }
 
 type schemeV3SignerInfo struct {
@@ -58,6 +62,13 @@ func (s *schemeV3) finalizeResult(requestedMinSdkVersion, requestedMaxSdkVersion
 		requestedMinSdkVersion = apilevel.V9_0_Pie
 	}
 
+	if s.actingAsV31 {
+		// V3.1 supports targeting an SDK version later than that of the initial release
+		// in which it is supported; allow any range for V3.1 as long as V3.0 covers the
+		// rest of the range.
+		requestedMinSdkVersion = requestedMaxSdkVersion
+	}
+
 	sort.Slice(s.signers, func(i, j int) bool {
 		return s.signers[i].minSdkVersion < s.signers[j].minSdkVersion
 	})
@@ -86,20 +97,20 @@ func (s *schemeV3) finalizeResult(requestedMinSdkVersion, requestedMaxSdkVersion
 		}
 	}
 
-	if firstMin > requestedMinSdkVersion || lastMax < requestedMaxSdkVersion {
-		msg := fmt.Sprintf("missing sdk versions, supports only <%d;%d>, got range (%d;%d)", firstMin, lastMax, requestedMinSdkVersion, requestedMaxSdkVersion)
-		if lastMax == apilevel.V12_1_S_V2 && result.ExtraBlocks[blockIdSchemeV31] != nil {
-			result.addWarning("%s, this would be an error on apksigner older than Android 13", msg)
-		} else {
-			result.addError(msg)
-		}
-
+	if s.rotationMinSdkVersion != 0 {
+		requestedMaxSdkVersion = s.rotationMinSdkVersion - 1
 	}
 
-	var err error
-	result.SigningLineage, err = s.consolidateLineages(lineages)
-	if err != nil {
-		result.addError(err.Error())
+	if firstMin > requestedMinSdkVersion || lastMax < requestedMaxSdkVersion {
+		result.addError("missing sdk versions, supports only <%d;%d>, got range (%d;%d)", firstMin, lastMax, requestedMinSdkVersion, requestedMaxSdkVersion)
+	}
+
+	if result.SigningLineage == nil {
+		var err error
+		result.SigningLineage, err = s.consolidateLineages(lineages)
+		if err != nil {
+			result.addError(err.Error())
+		}
 	}
 }
 
@@ -206,6 +217,8 @@ func (s *schemeV3) verifySigner(signerBlock *bytes.Buffer, contentDigests map[co
 		return
 	}
 
+	attrV3MinSdkVersionFound := false
+
 	additionalAttributeCount := 0
 	for additionalAttributes.Len() > 0 {
 		additionalAttributeCount++
@@ -246,9 +259,41 @@ func (s *schemeV3) verifySigner(signerBlock *bytes.Buffer, contentDigests map[co
 					result.addError("sub lineage cert mismatch")
 				}
 			}
+		case attrV3MinSdkVersion:
+			attrV3MinSdkVersionFound = true
+			if apilevel.SupportsSigV31(s.maxSdkVersion) {
+				var currentAttrMinSdk int32
+				if err := binary.Read(attribute, binary.LittleEndian, &currentAttrMinSdk); err != nil {
+					result.addError("failed to read attrRotationMinSdkVersion: %s", err.Error())
+					return
+				}
+
+				if s.rotationMinSdkVersion != 0 {
+					if s.rotationMinSdkVersion != currentAttrMinSdk {
+						result.addError("The v3 signer indicates key rotation should be supported starting from SDK version %d, but the v3.1 block targets %d for rotation",
+							s.rotationMinSdkVersion, currentAttrMinSdk)
+					}
+				} else {
+					result.addError("The v3 signer indicates key rotation should be supported starting from SDK version %d, but a v3.1 block was not found", currentAttrMinSdk)
+				}
+			} else {
+				result.addWarning("unknown additional attribute id 0x%x", id)
+			}
+		case attrV3RotationOnDev:
+			// This attribute should only be used by a v3.1 signer to indicate rotation
+			// is targeting the development release that is using the SDK version of the
+			// previously released platform version.
+			if !s.actingAsV31 {
+				result.addWarning("The rotation-targets-dev-release attribute is only supported on v3.1 signers; this attribute will be ignored by the platform in a v3.0 signer")
+			}
 		default:
-			result.addWarning("unknown additional attribute id 0x%x", uint32(id))
+			result.addWarning("unknown additional attribute id 0x%x", id)
 		}
+	}
+
+	if s.rotationMinSdkVersion != 0 && !attrV3MinSdkVersionFound {
+		result.addWarning("APK supports key rotation starting from SDK version %d, but the v3 signer does not "+
+			"contain the attribute to detect if this signature is stripped", s.rotationMinSdkVersion)
 	}
 }
 

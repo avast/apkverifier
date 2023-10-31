@@ -430,6 +430,10 @@ func (p *schemeV1) verify(apk *apkparser.ZipReader, hasValidSigningBlock bool, m
 		return fmt.Errorf("One or more of the signatures are invalid: %v", signatureErrors)
 	}
 
+	if len(p.chain) > maxApkSigners {
+		return fmt.Errorf("APK Signature Scheme v1 only supports a maximum of %d signers, found %d", maxApkSigners, len(p.chain))
+	}
+
 	return p.verifyMainManifest(apk, minSdkVersion, maxSdkVersion)
 }
 

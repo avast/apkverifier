@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// Nicer looking certificate info
+// CertInfo Nicer looking certificate info
 type CertInfo struct {
 	Md5                string
 	Sha1               string
@@ -54,7 +54,7 @@ func (c byPreference) Less(i, j int) bool {
 	return bytes.Compare(ci.Raw, cj.Raw) > 0
 }
 
-// Picks the "best-looking" (most likely the correct one) certificate from the chain
+// PickBestApkCert Picks the "best-looking" (most likely the correct one) certificate from the chain
 // extracted from APK. Is noop for most APKs, as they usually contain only one certificate.
 func PickBestApkCert(chains [][]*x509.Certificate) (*CertInfo, *x509.Certificate) {
 	if len(chains) == 0 {
@@ -66,14 +66,14 @@ func PickBestApkCert(chains [][]*x509.Certificate) (*CertInfo, *x509.Certificate
 	return NewCertInfo(chains[0][0]), chains[0][0]
 }
 
-// Returns new CertInfo with information from the x509.Certificate.
+// NewCertInfo Returns new CertInfo with information from the x509.Certificate.
 func NewCertInfo(cert *x509.Certificate) *CertInfo {
 	var res CertInfo
 	res.Fill(cert)
 	return &res
 }
 
-// Replaces CertInfo's data with information from the x509.Certificate.
+// Fill Replaces CertInfo's data with information from the x509.Certificate.
 func (ci *CertInfo) Fill(cert *x509.Certificate) {
 	md5sum := md5.Sum(cert.Raw)
 	sha1sum := sha1.Sum(cert.Raw)

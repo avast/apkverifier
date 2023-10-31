@@ -17,17 +17,17 @@ import (
 	"github.com/avast/apkverifier/signingblock"
 )
 
-// Contains result of Apk verification
+// Result Contains result of Apk verification
 type Result struct {
 	SigningSchemeId    int
 	SignerCerts        [][]*x509.Certificate
 	SigningBlockResult *signingblock.VerificationResult
 }
 
-// Returned from the Verify method if the file starts with the DEX magic value,
+// ErrMixedDexApkFile Returned from the Verify method if the file starts with the DEX magic value,
 // but otherwise looks like a properly signed APK.
 //
-// This detect 'Janus' Android vulnerability where a DEX is prepended to a valid,
+// This detects 'Janus' Android vulnerability where a DEX is prepended to a valid,
 // signed APK file. The signature verification passes because with v1 scheme,
 // only the APK portion of the file is checked, but Android then loads the prepended,
 // unsigned DEX file instead of the one from APK.
@@ -39,19 +39,21 @@ var ErrMixedDexApkFile = errors.New("This file is both DEX and ZIP archive! Expl
 
 const (
 	dexHeaderMagic uint32 = 0xa786564 // "dex\n", littleendinan
+
+	maxApkSigners = 10
 )
 
-// Calls VerifyWithSdkVersion with sdk versions <apilevel.V_AnyMin; apilevel.V_AnyMax>
+// Verify Calls VerifyWithSdkVersion with sdk versions <apilevel.V_AnyMin; apilevel.V_AnyMax>
 func Verify(path string, optionalZip *apkparser.ZipReader) (res Result, err error) {
 	return VerifyWithSdkVersion(path, optionalZip, apilevel.V_AnyMin, apilevel.V_AnyMax)
 }
 
-// Calls VerifyWithSdkVersionReader with sdk versions <apilevel.V_AnyMin; apilevel.V_AnyMax>
+// VerifyReader Calls VerifyWithSdkVersionReader with sdk versions <apilevel.V_AnyMin; apilevel.V_AnyMax>
 func VerifyReader(r io.ReadSeeker, optionalZip *apkparser.ZipReader) (res Result, err error) {
 	return VerifyWithSdkVersionReader(r, optionalZip, apilevel.V_AnyMin, apilevel.V_AnyMax)
 }
 
-// see VerifyWithSdkVersionReader
+// VerifyWithSdkVersion see VerifyWithSdkVersionReader
 func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkVersion, maxSdkVersion int32) (res Result, err error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -61,7 +63,7 @@ func VerifyWithSdkVersion(path string, optionalZip *apkparser.ZipReader, minSdkV
 	return VerifyWithSdkVersionReader(f, optionalZip, minSdkVersion, maxSdkVersion)
 }
 
-// Verify the application signature. If err is nil, the signature is correct,
+// VerifyWithSdkVersionReader Verify the application signature. If err is nil, the signature is correct,
 // otherwise it is not and res may or may not contain extracted certificates,
 // depending on how the signature verification failed.
 // Path is required, pass optionalZip if you have the ZipReader already opened and want to reuse it.
@@ -78,11 +80,11 @@ func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReade
 		defer optionalZip.Close()
 	}
 
-	var sandboxVersion int32
+	var sandboxVersion, targetSdkVersion int32
 	var manifestError error
 	if minSdkVersion == apilevel.V_AnyMin || apilevel.RequiresSandboxV2(maxSdkVersion) {
 		var manifestMinSdkVersion int32
-		manifestMinSdkVersion, sandboxVersion, err = getManifestInfo(optionalZip)
+		manifestMinSdkVersion, targetSdkVersion, sandboxVersion, err = getManifestInfo(optionalZip)
 		if err != nil {
 			manifestError = err
 		} else {
@@ -119,6 +121,8 @@ func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReade
 	var sandboxError error
 	if apilevel.RequiresSandboxV2(maxSdkVersion) && sandboxVersion > 1 && (signingBlockError != nil || res.SigningSchemeId < 2) {
 		sandboxError = fmt.Errorf("no valid signature for sandbox version %d", sandboxVersion)
+	} else if targetSdkVersion >= apilevel.V11_0_Eleven && maxSdkVersion >= targetSdkVersion && res.SigningSchemeId < 2 {
+		sandboxError = fmt.Errorf("target SDK version %d requires a minimum of signature scheme v2; the APK is not signed with this or a later signature scheme", targetSdkVersion)
 	}
 
 	var certsv1 [][]*x509.Certificate
@@ -140,7 +144,7 @@ func VerifyWithSdkVersionReader(r io.ReadSeeker, optionalZip *apkparser.ZipReade
 	return
 }
 
-// Extract certs without verifying the signature.
+// ExtractCerts Extract certs without verifying the signature.
 func ExtractCerts(path string, optionalZip *apkparser.ZipReader) ([][]*x509.Certificate, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -172,8 +176,9 @@ func ExtractCertsReader(r io.ReadSeeker, optionalZip *apkparser.ZipReader) ([][]
 }
 
 type sandboxVersionEncoder struct {
-	minSdkVersion  int32
-	sandboxVersion int32
+	minSdkVersion    int32
+	targetSdkVersion int32
+	sandboxVersion   int32
 }
 
 func (e *sandboxVersionEncoder) EncodeToken(t xml.Token) error {
@@ -197,6 +202,14 @@ func (e *sandboxVersionEncoder) EncodeToken(t xml.Token) error {
 		} else if err != io.EOF {
 			return err
 		}
+
+		val, err = e.getAttrIntValue(&st, "targetSdkVersion")
+		if err == nil {
+			e.targetSdkVersion = val
+		} else if err != io.EOF {
+			return err
+		}
+
 		return apkparser.ErrEndParsing
 	}
 	return nil
@@ -219,10 +232,10 @@ func (e *sandboxVersionEncoder) getAttrIntValue(st *xml.StartElement, name strin
 	return 0, io.EOF
 }
 
-func getManifestInfo(zip *apkparser.ZipReader) (minSdkVersion, sandboxVersion int32, err error) {
+func getManifestInfo(zip *apkparser.ZipReader) (minSdkVersion, targetSdkVersion, sandboxVersion int32, err error) {
 	manifest := zip.File["AndroidManifest.xml"]
 	if manifest == nil {
-		return 1, 1, nil
+		return 1, 0, 1, nil
 	}
 
 	if err = manifest.Open(); err != nil {
@@ -232,12 +245,12 @@ func getManifestInfo(zip *apkparser.ZipReader) (minSdkVersion, sandboxVersion in
 	defer manifest.Close()
 
 	for manifest.Next() {
-		enc := sandboxVersionEncoder{1, 1}
+		enc := sandboxVersionEncoder{1, 0, 1}
 		if err = apkparser.ParseXml(manifest, &enc, nil); err != nil {
 			err = fmt.Errorf("failed to parse AndroidManifest.xml: %s", err.Error())
 			return
 		}
-		return enc.minSdkVersion, enc.sandboxVersion, nil
+		return enc.minSdkVersion, enc.targetSdkVersion, enc.sandboxVersion, nil
 	}
 	return
 }

@@ -35,7 +35,7 @@ func Example() {
 	}
 }
 
-// From https://android.googlesource.com/platform/tools/apksig 5941d7112b28d5dada825aad757781f0b3ecf23b
+// From https://android.googlesource.com/platform/tools/apksig c5b2567d87833f347cd578acc0262501c7eae423
 var (
 	DSA_KEY_NAMES                  = []string{"1024", "2048", "3072"}
 	DSA_KEY_NAMES_1024_AND_SMALLER = []string{"1024"}
@@ -43,6 +43,17 @@ var (
 	EC_KEY_NAMES                   = []string{"p256", "p384", "p521"}
 	RSA_KEY_NAMES                  = []string{"1024", "2048", "3072", "4096", "8192", "16384"}
 	RSA_KEY_NAMES_2048_AND_LARGER  = []string{"2048", "3072", "4096", "8192", "16384"}
+)
+
+const (
+	RSA_2048_CHUNKED_SHA256_DIGEST                             = "0a457e6dd7cc8d4dde28a4dae843032de5fbe58123eedd0a31e7f958f23e1626"
+	RSA_2048_CHUNKED_SHA256_DIGEST_FROM_INCORRECTLY_SIGNED_APK = "0a457e6dd7cc8d4dde28a4dae843032de5fbe58101eedd0a31e7f958f23e1626"
+
+	FIRST_RSA_2048_SIGNER_RESOURCE_NAME  = "rsa-2048"
+	SECOND_RSA_2048_SIGNER_RESOURCE_NAME = "rsa-2048_2"
+	THIRD_RSA_2048_SIGNER_RESOURCE_NAME  = "rsa-2048_3"
+	EC_P256_SIGNER_RESOURCE_NAME         = "ec-p256"
+	EC_P256_2_SIGNER_RESOURCE_NAME       = "ec-p256_2"
 )
 
 const anyErrorString = "LiterallyAnything"
@@ -150,6 +161,14 @@ func TestV1OneSignerSHA256withDSAAccepted(t *testing.T) {
 	// APK signed with v1 scheme only, one signer
 	assertVerifiedForEach(t, "v1-only-with-dsa-sha256-1.2.840.10040.4.1-%s.apk", DSA_KEY_NAMES)
 	assertVerifiedForEach(t, "v1-only-with-dsa-sha256-2.16.840.1.101.3.4.3.2-%s.apk", DSA_KEY_NAMES)
+}
+
+func TestV1MaxSupportedSignersAccepted(t *testing.T) {
+	assertVerified(t, "v1-only-10-signers.apk")
+}
+
+func TestV1MoreThanMaxSupportedSignersRejected(t *testing.T) {
+	assertVerificationFailure(t, "v1-only-11-signers.apk", "APK Signature Scheme v1 only supports a maximum")
 }
 
 func TestV2StrippedRejected(t *testing.T) {
@@ -423,6 +442,14 @@ func TestV2TwoSignersRejectedWhenOneWithoutSupportedSignatures(t *testing.T) {
 	assertVerificationFailure(t, "v2-only-two-signers-second-signer-no-supported-sig.apk", "no supported signatures found")
 }
 
+func TestV2MaxSupportedSignersAccepted(t *testing.T) {
+	assertVerifiedSdk(t, "v2-only-10-signers.apk", apilevel.V7_1_Nougat, apilevel.V_AnyMax)
+}
+
+func TestV2MoreThanMaxSupportedSignersRejected(t *testing.T) {
+	assertVerificationFailureSdk(t, "v2-only-11-signers.apk", apilevel.V7_1_Nougat, apilevel.V_AnyMax, "APK Signature Scheme V2 only supports a maximum")
+}
+
 func TestCorrectCertUsedFromPkcs7SignedDataCertsSet(t *testing.T) {
 	// Obtained by prepending the rsa-1024 certificate to the PKCS#7 SignedData certificates set
 	// of v1-only-with-rsa-pkcs1-sha1-1.2.840.113549.1.1.1-2048.apk META-INF/CERT.RSA. The certs
@@ -531,6 +558,23 @@ func TestTargetSandboxVersion2AndHigher(t *testing.T) {
 	assertVerificationFailure(t, "unsigned-targetSandboxVersion-2.apk", "no valid signature for sandbox version")
 	// minSdkVersion 28, meaning v1 signature not needed
 	assertVerified(t, "v2-only-targetSandboxVersion-3.apk")
+}
+
+func TestTargetSdkMinSchemeVersionNotMet(t *testing.T) {
+	assertVerificationFailure(t, "v1-ec-p256-targetSdk-30.apk", "target SDK version 30 requires a minimum of signature scheme v2")
+}
+
+func TestTargetSdkMinSchemeVersionMet(t *testing.T) {
+	assertVerified(t, "v2-ec-p256-targetSdk-30.apk")
+	assertVerified(t, "v3-ec-p256-targetSdk-30.apk")
+}
+
+func TestTargetSdkMinSchemeVersionNotMetMaxLessThanTarget(t *testing.T) {
+	assertVerifiedSdk(t, "v1-ec-p256-targetSdk-30.apk", apilevel.V_AnyMin, apilevel.V10_0_Ten)
+}
+
+func TestTargetSdkNoUsesSdkElement(t *testing.T) {
+	assertVerified(t, "v1-only-no-uses-sdk.apk")
 }
 
 func TestV1MultipleDigestAlgsInManifestAndSignatureFile(t *testing.T) {
@@ -699,46 +743,71 @@ func TestV1SignedAttrsWrongSignature(t *testing.T) {
 
 // Lineage tests
 func TestLineageFromAPKContainsExpectedSigners(t *testing.T) {
-	res := assertVerifiedSdk(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", apilevel.V7_0_Nougat, apilevel.V_AnyMax)
+	assertLineageHasCerts(t, "v1v2v3-with-rsa-2048-lineage-3-signers.apk", apilevel.V7_0_Nougat, []string{
+		FIRST_RSA_2048_SIGNER_RESOURCE_NAME, SECOND_RSA_2048_SIGNER_RESOURCE_NAME, THIRD_RSA_2048_SIGNER_RESOURCE_NAME,
+	})
+}
+
+func TestGetResultLineage(t *testing.T) {
+	assertLineageHasCerts(t, "v31-tgt-33-no-v3-attr.apk", apilevel.V8_0_Oreo, []string{
+		FIRST_RSA_2048_SIGNER_RESOURCE_NAME, SECOND_RSA_2048_SIGNER_RESOURCE_NAME,
+	})
+}
+
+func TestGetResultV3Lineage(t *testing.T) {
+	assertLineageHasCerts(t, "v3-rsa-2048_2-tgt-dev-release.apk", apilevel.V7_0_Nougat, []string{
+		FIRST_RSA_2048_SIGNER_RESOURCE_NAME, SECOND_RSA_2048_SIGNER_RESOURCE_NAME,
+	})
+}
+
+func TestGetResultNoLineage(t *testing.T) {
+	res := assertVerificationFailureSdk(t, "v31-empty-lineage-no-v3.apk", apilevel.V7_0_Nougat, apilevel.V_AnyMax,
+		"The APK contains a v3.1 signing block without a v3.0 base block")
 	if res.SigningBlockResult == nil {
 		t.Fatalf("no signing block found")
-	} else if res.SigningBlockResult.SigningLineage == nil {
-		t.Fatalf("no signing lineage found")
+	} else if res.SigningBlockResult.SigningLineage != nil {
+		t.Fatalf("signing lineage found")
+	}
+}
+
+func TestGetResultNoV31Apk(t *testing.T) {
+	res := assertVerifiedSdk(t, "v3-rsa-2048_2-tgt-dev-release.apk", apilevel.V7_0_Nougat, apilevel.V_AnyMax)
+	if res.SigningBlockResult == nil {
+		t.Fatalf("no signing block found")
 	}
 
-	lin := res.SigningBlockResult.SigningLineage
+	if res.SigningSchemeId != 3 {
+		t.Fatalf("Invalid scheme id, got %d and expected 3", res.SigningSchemeId)
+	}
+}
 
-	certNames := []string{"rsa-2048.x509.pem", "rsa-2048_2.x509.pem", "rsa-2048_3.x509.pem"}
-	if len(certNames) != len(lin.Nodes) {
-		t.Fatalf("invalid number of certs in lineage, expected %d got %d", len(certNames), len(lin.Nodes))
+func TestGetResultFromV3BlockFromV31SignedApk(t *testing.T) {
+	res := assertVerifiedSdk(t, "v31-rsa-2048_2-tgt-33-1-tgt-28.apk", apilevel.V7_0_Nougat, apilevel.V_AnyMax)
+	if res.SigningBlockResult == nil {
+		t.Fatalf("no signing block found")
 	}
 
-	rsc := filepath.Join(os.Getenv("APKSIG_PATH"), "src/test/resources/com/android/apksig")
-	for _, cn := range certNames {
-		data, err := ioutil.ReadFile(filepath.Join(rsc, cn))
-		if err != nil {
-			t.Fatalf("failed to read cert file %s: %s", cn, err.Error())
-		}
+	if res.SigningSchemeId != 31 {
+		t.Fatalf("Invalid scheme id, got %d and expected 31", res.SigningSchemeId)
+	}
 
-		block, _ := pem.Decode(data)
+	v3result := res.SigningBlockResult.ExtraResults[3]
+	if v3result == nil {
+		t.Fatalf("Extra V3 result not found")
+	}
 
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			t.Fatalf("failed to parse cert %s: %s", cn, err.Error())
-		}
+	if v3result.SigningLineage != nil {
+		t.Fatalf("signing lineage found")
+	}
+}
 
-		found := false
-		for _, n := range lin.Nodes {
-			if n.SigningCert.Equal(cert) {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			ci := apkverifier.NewCertInfo(cert)
-			t.Fatalf("certificate %s was not found in lineage", ci.String())
-		}
+func TestGetResultContainsLineageErrors(t *testing.T) {
+	res := assertVerificationFailureSdk(t, "v31-2elem-incorrect-lineage.apk", apilevel.V9_0_Pie, apilevel.V_AnyMax,
+		"failed to read signing certificate lineage attribute: failed to parse cert in node")
+	if res.SigningBlockResult == nil {
+		t.Fatalf("no signing block found")
+	} else if res.SigningBlockResult.SigningLineage != nil {
+		t.Fatalf("signing lineage found")
 	}
 }
 
@@ -777,6 +846,61 @@ func TestAsn1SuperfluousLeadingZeros(t *testing.T) {
 	_, err := x509andr.ParseCertificateForGo(encodedCert)
 	if err != nil {
 		t.Fatal("failed to parse cert", err)
+	}
+}
+
+func TestVerifySignatureNegativeModulusConscryptProvider(t *testing.T) {
+	assertVerified(t, "v1v2v3-rsa-2048-negmod-in-cert.apk")
+	assertVerifiedSdk(t, "v1v2v3-rsa-2048-negmod-in-cert.apk", apilevel.V_AnyMin, apilevel.V6_0_Marshmallow)
+}
+
+func TestVerifyV31RotationTarget34(t *testing.T) {
+	assertVerifiedWithSigners(t, "v31-rsa-2048_2-tgt-10000-1-tgt-28.apk", true,
+		[]string{FIRST_RSA_2048_SIGNER_RESOURCE_NAME, SECOND_RSA_2048_SIGNER_RESOURCE_NAME})
+	// assertV31SignerTargetsMinApiLevel(result, SECOND_RSA_2048_SIGNER_RESOURCE_NAME, 10000);
+}
+
+func TestVerifyV31MissingStrippingAttr(t *testing.T) {
+	res := assertVerified(t, "v31-tgt-33-no-v3-attr.apk")
+	assertWarning(t, res, "does not contain the attribute to detect if this signature is stripped")
+}
+
+func TestVerifyV31MissingV31Block(t *testing.T) {
+	assertVerificationFailureSdk(t, "v31-block-stripped-v3-attr-value-33.apk", apilevel.V10_0_Ten, apilevel.V_AnyMax,
+		"The v3 signer indicates key rotation should be supported starting from SDK version 33, but a v3.1 block")
+	assertVerifiedSdk(t, "v31-block-stripped-v3-attr-value-33.apk", apilevel.V_AnyMin, apilevel.V13_0_TIRAMISU-1)
+}
+
+func TestVerifyV31BlockWithoutV3Block(t *testing.T) {
+	assertVerificationFailure(t, "v31-tgt-33-no-v3-block.apk", "The APK contains a v3.1 signing block without a v3.0 base block")
+}
+
+func TestVerifyV31RotationTargetsDevRelease(t *testing.T) {
+	assertVerifiedWithSigners(t, "v31-rsa-2048_2-tgt-10000-dev-release.apk", true,
+		[]string{FIRST_RSA_2048_SIGNER_RESOURCE_NAME, SECOND_RSA_2048_SIGNER_RESOURCE_NAME})
+}
+
+func TestVerifyV3RotatedSignedTargetsDevRelease(t *testing.T) {
+	res := assertVerified(t, "v3-rsa-2048_2-tgt-dev-release.apk")
+	assertWarning(t, res, "The rotation-targets-dev-release attribute is only supported on v3.1 signers")
+}
+
+func TestVerifyV31RotationTargets34(t *testing.T) {
+	assertLineageHasCerts(t, "v31-rsa-2048_2-tgt-34-1-tgt-28.apk", apilevel.V_AnyMin,
+		[]string{FIRST_RSA_2048_SIGNER_RESOURCE_NAME, SECOND_RSA_2048_SIGNER_RESOURCE_NAME})
+}
+
+func TestVerifyV31MinSdkVersionT(t *testing.T) {
+	res := assertVerifiedSdk(t, "v31-rsa-2048_2-tgt-33-1-tgt-28.apk", apilevel.V13_0_TIRAMISU, apilevel.V_AnyMax)
+	if res.SigningSchemeId != 31 {
+		t.Fatalf("Not using scheme 31, %d", res.SigningSchemeId)
+	}
+}
+
+func TestVerifyV31MinSdkVersionTTargetSdk30(t *testing.T) {
+	res := assertVerifiedSdk(t, "v31-ec-p256-2-tgt-33-1-tgt-28-targetSdk-30.apk", apilevel.V13_0_TIRAMISU, apilevel.V_AnyMax)
+	if res.SigningSchemeId != 31 {
+		t.Fatalf("Not using scheme 31, %d", res.SigningSchemeId)
 	}
 }
 
@@ -845,6 +969,127 @@ func assertNoLineage(t *testing.T, name string, mustVerify bool, minlevel int32)
 	} else if res.SigningBlockResult.SigningLineage != nil {
 		t.Fatalf("extra signing lineage in %s", name)
 	}
+}
+
+func assertLineageHasCerts(t *testing.T, name string, minlevel int32, certNames []string) {
+	res := assertVerifiedSdk(t, name, minlevel, apilevel.V_AnyMax)
+	if res.SigningBlockResult == nil {
+		t.Fatalf("no signing block found")
+	} else if res.SigningBlockResult.SigningLineage == nil {
+		t.Fatalf("no signing lineage found")
+	}
+
+	lin := res.SigningBlockResult.SigningLineage
+
+	if len(certNames) != len(lin.Nodes) {
+		t.Fatalf("invalid number of certs in lineage, expected %d got %d", len(certNames), len(lin.Nodes))
+	}
+
+	rsc := filepath.Join(os.Getenv("APKSIG_PATH"), "src/test/resources/com/android/apksig")
+	for _, cn := range certNames {
+		data, err := ioutil.ReadFile(filepath.Join(rsc, cn+".x509.pem"))
+		if err != nil {
+			t.Fatalf("failed to read cert file %s: %s", cn, err.Error())
+		}
+
+		block, _ := pem.Decode(data)
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			t.Fatalf("failed to parse cert %s: %s", cn, err.Error())
+		}
+
+		found := false
+		for _, n := range lin.Nodes {
+			if n.SigningCert.Equal(cert) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			ci := apkverifier.NewCertInfo(cert)
+			t.Fatalf("certificate %s was not found in lineage", ci.String())
+		}
+	}
+}
+
+func assertVerifiedWithSigners(t *testing.T, name string, rotationExpected bool, certNames []string) apkverifier.Result {
+	res := assertVerified(t, name)
+
+	var v3CertNames []string
+	if res.SigningSchemeId >= 3 {
+		if !rotationExpected || res.SigningSchemeId == 31 {
+			v3CertNames = certNames[0:1]
+		} else {
+			v3CertNames = certNames[len(certNames)-1:]
+		}
+	}
+
+	if res.SigningSchemeId == 31 {
+		assertSigners(t, res.SigningBlockResult.ExtraResults[3].Certs, v3CertNames)
+		assertSigners(t, res.SignerCerts, certNames[len(certNames)-1:])
+	} else if res.SigningSchemeId == 3 {
+		assertSigners(t, res.SignerCerts, v3CertNames)
+	} else {
+		if rotationExpected {
+			certNames = certNames[0:1]
+		}
+		assertSigners(t, res.SignerCerts, certNames)
+	}
+	return res
+}
+
+func assertSigners(t *testing.T, signerCerts [][]*x509.Certificate, certNames []string) {
+	expectedSigners := make(map[[32]byte]*x509.Certificate)
+	signersNotFound := make(map[[32]byte]string)
+	rsc := filepath.Join(os.Getenv("APKSIG_PATH"), "src/test/resources/com/android/apksig")
+	for _, cn := range certNames {
+		data, err := ioutil.ReadFile(filepath.Join(rsc, cn+".x509.pem"))
+		if err != nil {
+			t.Fatalf("failed to read cert file %s: %s", cn, err.Error())
+		}
+
+		block, _ := pem.Decode(data)
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			t.Fatalf("failed to parse cert %s: %s", cn, err.Error())
+		}
+		certHash := sha256.Sum256(cert.Raw)
+		expectedSigners[certHash] = cert
+		signersNotFound[certHash] = cn
+	}
+
+	for _, certs := range signerCerts {
+		for certHash, expectedCert := range expectedSigners {
+			if certs[0].Equal(expectedCert) {
+				delete(signersNotFound, certHash)
+			}
+		}
+	}
+
+	if len(signersNotFound) != 0 {
+		msg := "Failed to find signers: "
+		for _, name := range signersNotFound {
+			msg += name + " "
+		}
+		t.Fatal(msg)
+	}
+}
+
+func assertWarning(t *testing.T, res apkverifier.Result, text string) {
+	if res.SigningBlockResult == nil {
+		t.Fatalf("no signing block found")
+	}
+
+	for _, w := range res.SigningBlockResult.Warnings {
+		if strings.Contains(w, text) {
+			return
+		}
+	}
+
+	t.Fatalf("was supposed have warning '%s' but not found\n%s", text, formatResult(t, res))
 }
 
 func verify(t *testing.T, name string, minSdkVersion, maxSdkVersion int32) (apkverifier.Result, error) {
