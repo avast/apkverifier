@@ -55,6 +55,10 @@ func SupportsSigV3(level int32) bool {
 	return level >= V9_0_Pie
 }
 
+func SupportsSigV31(level int32) bool {
+	return level >= V13_0_TIRAMISU
+}
+
 func RequiresSandboxV2(level int32) bool {
 	return level >= V8_0_Oreo
 }

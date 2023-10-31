@@ -3,7 +3,6 @@ package signingblock
 import (
 	"bytes"
 	"encoding/binary"
-
 	"github.com/avast/apkverifier/apilevel"
 )
 
@@ -33,6 +32,11 @@ func (s *schemeV2) parseSigners(block *bytes.Buffer, contentDigests map[contentD
 		}
 
 		s.verifySigner(signer, contentDigests, result)
+	}
+
+	if len(result.Certs) > maxApkSigners {
+		result.addError("APK Signature Scheme V2 only supports a maximum of %d signers, found %d",
+			maxApkSigners, len(result.Certs))
 	}
 }
 
@@ -131,14 +135,12 @@ func (s *schemeV2) verifySigner(signerBlock *bytes.Buffer, contentDigests map[co
 				return
 			}
 
-			switch strippedSchemeId {
-			case schemeIdV3:
-				if result.ExtraBlocks[blockIdSchemeV3] == nil {
-					result.addError("this apk was signed with v3 signing scheme, but it was stripped, downgrade attack?")
-					return
-				}
-			default:
+			strippedBlockId, prs := schemeIdToBlockId[strippedSchemeId]
+			if !prs {
 				result.addError("unknown stripped scheme id: %d", strippedSchemeId)
+			} else if result.ExtraBlocks[strippedBlockId] == nil {
+				result.addError("this apk was signed with %d signing scheme, but it was stripped, downgrade attack?", strippedSchemeId)
+				return
 			}
 		default:
 			result.addWarning("unknown additional attribute id 0x%x", uint32(id))

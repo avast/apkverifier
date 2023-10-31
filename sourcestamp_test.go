@@ -13,7 +13,7 @@ import (
 	"github.com/avast/apkverifier/apilevel"
 )
 
-// From https://android.googlesource.com/platform/tools/apksig 907b962a6702ca25a28ed54b14964b5b713aeedb
+// From https://android.googlesource.com/platform/tools/apksig c5b2567d87833f347cd578acc0262501c7eae423
 
 const (
 	RSA_2048_CERT_SHA256_DIGEST   = "fb5dbd3c669af9fc236c6991e6387b7f11ff0590997f22d0f5c74ff40e04fca8"
@@ -76,6 +76,46 @@ func TestSourceStampV2OnlySignatureValidStamp(t *testing.T) {
 func TestSourceStampV3OnlySignatureValidStamp(t *testing.T) {
 	r := stampAssertVerifiedSdk(t, "v3-only-with-stamp.apk", apilevel.V9_0_Pie, apilevel.V9_0_Pie)
 	stampAssertCert(t, r, 3, EC_P256_CERT_SHA256_DIGEST)
+
+	if !r.SigningBlockResult.SourceStamp.SigningTime.IsZero() {
+		t.Fatalf("SourceStamp has Non-zero time %v!", r.SigningBlockResult.SourceStamp.SigningTime)
+	}
+}
+
+func TestSourceStampValidTimestamp(t *testing.T) {
+	r := stampAssertVerifiedSdk(t, "stamp-valid-timestamp-value.apk", apilevel.V_AnyMin, apilevel.V_AnyMax)
+	if r.SigningBlockResult.SourceStamp.SigningTime.Unix() != 1644886584 {
+		t.Fatalf("SourceStamp has wrong time, expected 1644886584 got %d!",
+			r.SigningBlockResult.SourceStamp.SigningTime.Unix())
+	}
+}
+
+func TestSourceStampValidTimestampLargeBuffer(t *testing.T) {
+	r := stampAssertVerifiedSdk(t, "stamp-valid-timestamp-16-byte-buffer.apk", apilevel.V_AnyMin, apilevel.V_AnyMax)
+	if r.SigningBlockResult.SourceStamp.SigningTime.Unix() != 1645126786 {
+		t.Fatalf("SourceStamp has wrong time, expected 1645126786 got %d!",
+			r.SigningBlockResult.SourceStamp.SigningTime.Unix())
+	}
+}
+
+func TestSourceStampInvalidTimestampValueEqualsZero(t *testing.T) {
+	stampAssertFailureSdk(t, "stamp-invalid-timestamp-value-zero.apk", apilevel.V_AnyMin, apilevel.V_AnyMax,
+		"Invalid timestamp 0 in source stamp")
+}
+
+func TestSourceStampInvalidTimestampValueLessThanZero(t *testing.T) {
+	stampAssertFailureSdk(t, "stamp-invalid-timestamp-value-less-than-zero.apk", apilevel.V_AnyMin, apilevel.V_AnyMax,
+		"Invalid timestamp")
+}
+
+func TestSourceStampInvalidTimestampZeroInFirst8BytesOfBuffer(t *testing.T) {
+	stampAssertFailureSdk(t, "stamp-timestamp-in-last-8-of-16-byte-buffer.apk", apilevel.V_AnyMin, apilevel.V_AnyMax,
+		"Invalid timestamp")
+}
+
+func TestSourceStampModifiedTimestampValue(t *testing.T) {
+	stampAssertFailureSdk(t, "stamp-valid-timestamp-value-modified.apk", apilevel.V_AnyMin, apilevel.V_AnyMax,
+		"failed to verify signature")
 }
 
 func TestSourceStampApkHashMismatchV1Scheme(t *testing.T) {

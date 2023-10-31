@@ -10,6 +10,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/avast/apkparser"
 
@@ -18,6 +19,7 @@ import (
 
 const (
 	sourceStampAttrProofOfRotation = 0x9d6303f7
+	sourceStampAttrTime            = 0xe43c5946
 
 	sourceStampZipEntryName  = "stamp-cert-sha256"
 	sourceStampHashSizeLimit = 64 * 1024
@@ -32,10 +34,11 @@ type SourceStampLineageNode struct {
 }
 
 type SourceStampResult struct {
-	Cert     *x509.Certificate
-	Lineage  []*SourceStampLineageNode
-	Errors   []error
-	Warnings []string
+	Cert        *x509.Certificate
+	SigningTime time.Time
+	Lineage     []*SourceStampLineageNode
+	Errors      []error
+	Warnings    []string
 }
 
 type SourceStampCertMismatchError struct {
@@ -121,6 +124,11 @@ func (v *sourceStampVerifier) VerifySourceV2Stamp(zip *apkparser.ZipReader, bloc
 		return
 	}
 
+	neededSchemeId := v.verifiedSchemeId
+	if neededSchemeId == schemeIdV31 {
+		neededSchemeId = schemeIdV3
+	}
+
 	var signaturesBlock *bytes.Buffer
 	for signedSignatureSchemes.Len() != 0 {
 		schemeBuf, err := getLenghtPrefixedSlice(signedSignatureSchemes)
@@ -141,13 +149,13 @@ func (v *sourceStampVerifier) VerifySourceV2Stamp(zip *apkparser.ZipReader, bloc
 			return
 		}
 
-		if schemeId == v.verifiedSchemeId {
+		if schemeId == neededSchemeId {
 			signaturesBlock = apkDigestSignatures
 		}
 	}
 
 	if signaturesBlock == nil {
-		v.addError("No source stamp signature for scheme %d", v.verifiedSchemeId)
+		v.addError("No source stamp signature for scheme %d", neededSchemeId)
 		return
 	}
 
@@ -346,6 +354,18 @@ func (v *sourceStampVerifier) parseStampAttributes(attributesData *bytes.Buffer)
 			if !v.res.Cert.Equal(v.res.Lineage[len(v.res.Lineage)-1].Cert) {
 				v.addError("lineage certificate mismatch")
 				return false
+			}
+		case sourceStampAttrTime:
+			var timestamp int64
+			if err := binary.Read(attr, binary.LittleEndian, &timestamp); err != nil {
+				v.addError("failed to parse attribute timestamp: %s", err.Error())
+				return false
+			}
+
+			if timestamp <= 0 {
+				v.addError("Invalid timestamp %d in source stamp", timestamp)
+			} else {
+				v.res.SigningTime = time.Unix(timestamp, 0)
 			}
 		default:
 			v.addWarning("Unknown attribute 0x%08x is present.", id)

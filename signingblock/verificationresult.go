@@ -10,6 +10,9 @@ type VerificationResult struct {
 	SchemeId       int
 	SigningLineage *V3SigningLineage
 
+	// When APK is signed with v3.1, the v3 result is stored here. Any v3 errors are lifted to the main Warnings/errors though
+	ExtraResults map[int]*VerificationResult
+
 	Frosting *FrostingResult
 
 	SourceStamp *SourceStampResult

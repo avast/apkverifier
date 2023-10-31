@@ -119,6 +119,7 @@ func (algo SignatureAlgorithm) getMinSdkVersion() int32 {
 
 /*
 const (
+
 	SigRsaPssWithSha256            SignatureAlgorithm = 0x0101
 	SigRsaPssWithSha512                               = 0x0102
 	SigRsaPkcs1V15WithSha256                          = 0x0103
@@ -129,6 +130,7 @@ const (
 	SigVerityRsaPkcs1V15WithSha256                    = 0x0421
 	SigVerityEcdsaWithSha256                          = 0x0423
 	SigVerityDsaWithSha256                            = 0x425
+
 )
 */
 func (algo SignatureAlgorithm) getMinSdkVersionJca() int32 {
