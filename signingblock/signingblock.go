@@ -258,10 +258,12 @@ func newSigningBlock(r io.ReadSeeker) (sblock *signingBlock, magic uint32, err e
 	size, err := r.Seek(0, io.SeekEnd)
 	if err != nil {
 		err = fmt.Errorf("failed to seek to the end of the APK file: %s", err.Error())
+		return
 	}
 
-	if _, err := r.Seek(0, io.SeekStart); err != nil {
+	if _, err = r.Seek(0, io.SeekStart); err != nil {
 		err = fmt.Errorf("failed to seek to the start of the APK file: %s", err.Error())
+		return
 	}
 
 	if size < 4 {
