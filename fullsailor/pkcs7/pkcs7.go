@@ -885,6 +885,9 @@ func encryptDESCBC(content []byte) ([]byte, *encryptedContentInfo, error) {
 	}
 	mode := cipher.NewCBCEncrypter(block, iv)
 	plaintext, err := pad(content, mode.BlockSize())
+	if err != nil {
+		return nil, nil, err
+	}
 	cyphertext := make([]byte, len(plaintext))
 	mode.CryptBlocks(cyphertext, plaintext)
 
@@ -909,7 +912,7 @@ func encryptDESCBC(content []byte) ([]byte, *encryptedContentInfo, error) {
 // value is EncryptionAlgorithmDESCBC. To use a different algorithm, change the
 // value before calling Encrypt(). For example:
 //
-//     ContentEncryptionAlgorithm = EncryptionAlgorithmAES128GCM
+//	ContentEncryptionAlgorithm = EncryptionAlgorithmAES128GCM
 //
 // TODO(fullsailor): Add support for encrypting content with other algorithms
 func Encrypt(content []byte, recipients []*x509.Certificate) ([]byte, error) {
